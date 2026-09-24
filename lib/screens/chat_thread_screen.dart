@@ -10,6 +10,7 @@ import '../services/workspace_chat_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../widgets/message_tag_style.dart';
 
 /// One conversation's messages, plus a text field to reply. Works for both
 /// a firm member (sender_role bookkeeper) and a portal client (sender_role
@@ -42,6 +43,7 @@ class ChatThreadScreen extends StatefulWidget {
 class _ChatThreadScreenState extends State<ChatThreadScreen> {
   final _service = WorkspaceChatService();
   final _docs = DocumentService();
+  MessageTag _tag = MessageTag.normal;
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   late Future<WorkspaceMessagesResponse> _future;
@@ -122,7 +124,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         clientId: widget.clientId,
         body: _controller.text,
         documentId: documentId,
+        tag: _tag,
       );
+      _warnIfUrgentInflation(res);
+      _tag = MessageTag.normal;
       _conversationId ??= res['conversation_id'] as String?;
       _controller.clear();
       _reload();
@@ -137,6 +142,24 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     }
   }
 
+  /// The server counts how many times this sender has played the urgent card
+  /// in this conversation in the last 7 days. Past the third, say so once --
+  /// a nudge, not a block. Refusing to send somebody's genuinely urgent fourth
+  /// message would cost more than the inflation it prevents, which is why the
+  /// database returns the count instead of enforcing a cap.
+  void _warnIfUrgentInflation(Map<String, dynamic> res) {
+    final count = (res['recent_urgent_count'] as num?)?.toInt() ?? 0;
+    if (count < 4 || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$count urgent messages to this client this week. Urgent stops '
+          'meaning urgent if everything is.',
+        ),
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
@@ -146,7 +169,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         orgId: widget.workspace.orgId,
         clientId: widget.clientId,
         body: text,
+        tag: _tag,
       );
+      _warnIfUrgentInflation(res);
+      _tag = MessageTag.normal;   // one message, one tag: never sticky
       // First message in a brand-new thread: keep the id the server just
       // created so history loads from here on.
       _conversationId ??= res['conversation_id'] as String?;
@@ -224,7 +250,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
               controller: _controller,
               sending: _sending,
               onSend: _send,
-              onAttach: _attach),
+              onAttach: _attach,
+              tag: _tag,
+              onTagChanged: (t) => setState(() => _tag = t)),
         ],
       ),
     );
@@ -239,8 +267,16 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final align = isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final bg = isMine ? AppColors.primary : AppColors.surface;
-    final fg = isMine ? Colors.white : AppColors.ink;
+    final tagged = message.tag != MessageTag.normal;
+    final tc = tagColours(message.tag);
+
+    // A tagged message is painted in its tag's colours on BOTH sides of the
+    // thread: the point is that the reason stands out, not who sent it. An
+    // untagged one keeps the ordinary mine/theirs contrast.
+    final bg = tagged
+        ? tc.bg
+        : (isMine ? AppColors.primary : AppColors.surface);
+    final fg = tagged ? AppColors.ink : (isMine ? Colors.white : AppColors.ink);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(
@@ -258,13 +294,33 @@ class _MessageBubble extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
             decoration: BoxDecoration(
               color: bg,
-              border: isMine ? null : Border.all(color: AppColors.border),
+              border: Border.all(
+                  color: tagged
+                      ? tc.ink
+                      : (isMine ? Colors.transparent : AppColors.border),
+                  width: tagged ? 1.2 : 1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (tagged) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(tagIcon(message.tag), size: 13, color: tc.ink),
+                      const SizedBox(width: 5),
+                      Text(tagLabel(message.tag).toUpperCase(),
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.6,
+                              color: tc.ink)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                ],
                 if (message.documentId != null)
                   _AttachmentChip(
                       documentId: message.documentId!, onDark: isMine),
@@ -307,11 +363,15 @@ class _Composer extends StatelessWidget {
   final bool sending;
   final VoidCallback onSend;
   final VoidCallback onAttach;
+  final MessageTag tag;
+  final ValueChanged<MessageTag> onTagChanged;
   const _Composer(
       {required this.controller,
       required this.sending,
       required this.onSend,
-      required this.onAttach});
+      required this.onAttach,
+      required this.tag,
+      required this.onTagChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -323,7 +383,34 @@ class _Composer extends StatelessWidget {
           color: AppColors.bg,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+        // Three buttons, not four: blue is what a message already is, so there
+        // is nothing to press for it. Each one toggles, so the same tap takes
+        // it back off.
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              for (final t in [
+                MessageTag.pending,
+                MessageTag.invoice,
+                MessageTag.urgent
+              ]) ...[
+                _TagButton(
+                  tag: t,
+                  selected: tag == t,
+                  onTap: sending
+                      ? null
+                      : () => onTagChanged(tag == t ? MessageTag.normal : t),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ),
+        Row(
           children: [
             IconButton(
               onPressed: sending ? null : onAttach,
@@ -357,6 +444,59 @@ class _Composer extends StatelessWidget {
                   : Icon(Icons.send, color: AppColors.primary),
             ),
           ],
+        ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TagButton extends StatelessWidget {
+  final MessageTag tag;
+  final bool selected;
+  final VoidCallback? onTap;
+  const _TagButton(
+      {required this.tag, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = tagColours(tag);
+    return Expanded(
+      child: Material(
+        color: selected ? c.bg : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            decoration: BoxDecoration(
+              border: Border.all(
+                  color: selected ? c.ink : AppColors.border,
+                  width: selected ? 1.2 : 1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(tagIcon(tag),
+                    size: 14, color: selected ? c.ink : AppColors.inkSubtle),
+                const SizedBox(width: 5),
+                Flexible(
+                  child: Text(
+                    tagLabel(tag),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: selected ? c.ink : AppColors.inkMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

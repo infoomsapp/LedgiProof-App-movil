@@ -3,6 +3,26 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Mirrors src/services/workspace-chat.service.ts's RPC contract exactly --
 /// same 7 RPCs, same param names, same shapes. This is workspace-level chat
 /// (bookkeeper <-> client), separate from any per-transaction chat.
+/// What a message is ABOUT, which is why it is a tag and not a priority.
+/// Three of the four state a fact; only [urgent] is a self-assessment, and it
+/// is the only one that can inflate. Mirrors the workspace_messages.message_tag
+/// CHECK constraint exactly.
+enum MessageTag { normal, pending, invoice, urgent }
+
+MessageTag _messageTagFrom(String? v) => switch (v) {
+      'pending' => MessageTag.pending,
+      'invoice' => MessageTag.invoice,
+      'urgent' => MessageTag.urgent,
+      _ => MessageTag.normal,
+    };
+
+String messageTagTo(MessageTag t) => switch (t) {
+      MessageTag.pending => 'pending',
+      MessageTag.invoice => 'invoice',
+      MessageTag.urgent => 'urgent',
+      MessageTag.normal => 'normal',
+    };
+
 enum MessageSenderRole { bookkeeper, client, system }
 enum MessageKind { in_, out, system, ai }
 
@@ -81,6 +101,8 @@ class WorkspaceMessage {
   final DateTime createdAt;
   final String? senderName;
 
+  final MessageTag tag;
+
   /// Set when the message carries a file. The row itself only holds the id;
   /// the signed URL is fetched on demand through DocumentService, so a thread
   /// never mints URLs for files nobody opens.
@@ -97,7 +119,8 @@ class WorkspaceMessage {
         createdAt = DateTime.tryParse((r['created_at'] as String?) ?? '') ??
             DateTime.now(),
         senderName = r['sender_name'] as String?,
-        documentId = r['document_id'] as String?;
+        documentId = r['document_id'] as String?,
+        tag = _messageTagFrom(r['message_tag'] as String?);
 }
 
 class WorkspaceMessagesResponse {
@@ -145,6 +168,7 @@ class WorkspaceChatService {
     required String clientId,
     String body = '',
     String? documentId,
+    MessageTag tag = MessageTag.normal,
     MessageKind messageKind = MessageKind.in_,
     bool clientVisible = true,
   }) async {
@@ -158,6 +182,7 @@ class WorkspaceChatService {
       if (trimmed.isNotEmpty) 'p_body': trimmed,
       'p_document_id': ?documentId,
       'p_message_kind': _messageKindTo(messageKind),
+      'p_message_tag': messageTagTo(tag),
       'p_client_visible': clientVisible,
       'p_context_ref': null,
     });

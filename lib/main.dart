@@ -6,9 +6,16 @@ import 'screens/login_screen.dart';
 import 'services/workspace_service.dart';
 import 'theme/app_theme.dart';
 
+/// Single instance for the whole app. Settings writes to it, [LedgiProofApp]
+/// listens, and everything below repaints.
+final themeController = LpThemeController();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.publishableKey);
+  // Read the saved light/dark choice before the first frame so the app never
+  // flashes the wrong palette on launch.
+  await themeController.load();
   runApp(const LedgiProofApp());
 }
 
@@ -17,11 +24,26 @@ class LedgiProofApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'LedgiProof',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      home: const AuthGate(),
+    return ListenableBuilder(
+      listenable: themeController,
+      builder: (context, _) {
+        // Resolve once, here, and hand the SAME palette to both the static
+        // token accessor the screens use and the ThemeData Flutter uses.
+        // Passing `theme` + `darkTheme` + `themeMode` instead would let Flutter
+        // pick one while AppColors still served the other.
+        final platformBrightness =
+            MediaQuery.maybePlatformBrightnessOf(context) ?? Brightness.dark;
+        final palette = themeController.resolve(platformBrightness);
+        AppColors.use(palette);
+        applySystemChrome(palette);
+
+        return MaterialApp(
+          title: 'LedgiProof',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(palette),
+          home: const AuthGate(),
+        );
+      },
     );
   }
 }
@@ -77,9 +99,9 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: AppColors.red, size: 32),
+                    Icon(Icons.error_outline, color: AppColors.red, size: 32),
                     const SizedBox(height: 12),
-                    const Text('Could not load your workspace.', style: TextStyle(color: AppColors.ink)),
+                    Text('Could not load your workspace.', style: TextStyle(color: AppColors.ink)),
                     const SizedBox(height: 16),
                     TextButton(
                       onPressed: () => Supabase.instance.client.auth.signOut(),

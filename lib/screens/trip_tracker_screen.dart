@@ -118,7 +118,7 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
           shrinkWrap: true,
           children: clients
               .map((c) => ListTile(
-                    title: Text(c.displayName, style: const TextStyle(color: AppColors.ink)),
+                    title: Text(c.displayName, style: TextStyle(color: AppColors.ink)),
                     onTap: () => Navigator.pop(ctx, c),
                   ))
               .toList(),
@@ -227,11 +227,11 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.link, color: AppColors.accent, size: 28),
+              Icon(Icons.link, color: AppColors.accent, size: 28),
               const SizedBox(height: 12),
-              const Text('Trips sync automatically', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
+              Text('Trips sync automatically', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Your ControlMiles account is connected. Every closed trip lands here on its own — nothing to start or stop from this app.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted, height: 1.5),
@@ -252,13 +252,13 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
           Container(
             width: 180, height: 180,
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.border, width: 2, style: BorderStyle.solid)),
-            child: const Center(child: Icon(Icons.navigation_outlined, color: AppColors.inkSubtle, size: 40)),
+            child: Center(child: Icon(Icons.navigation_outlined, color: AppColors.inkSubtle, size: 40)),
           ),
           const SizedBox(height: 16),
-          const Text('Tap start when you leave', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+          Text('Tap start when you leave', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 12.5), textAlign: TextAlign.center),
+            Text(_error!, style: TextStyle(color: AppColors.red, fontSize: 12.5), textAlign: TextAlign.center),
           ],
           const Spacer(),
           SizedBox(
@@ -293,15 +293,15 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(_fmtClock(_elapsed), style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()], fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                  Text(_fmtClock(_elapsed), style: TextStyle(fontFeatures: [FontFeature.tabularFigures()], fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.ink)),
                   const SizedBox(height: 4),
-                  Text('${_miles.toStringAsFixed(1)} mi', style: const TextStyle(fontSize: 12, color: AppColors.inkSubtle)),
+                  Text('${_miles.toStringAsFixed(1)} mi', style: TextStyle(fontSize: 12, color: AppColors.inkSubtle)),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
-          const Text('Safe to lock your phone', style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5)),
+          Text('Safe to lock your phone', style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5)),
           const Spacer(),
           SizedBox(
             width: double.infinity,
@@ -324,12 +324,12 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
       child: Column(
         children: [
           const SizedBox(height: 20),
-          const Icon(Icons.check_circle_outline, color: AppColors.green, size: 36),
+          Icon(Icons.check_circle_outline, color: AppColors.green, size: 36),
           const SizedBox(height: 10),
           Text('${_miles.toStringAsFixed(1)} mi · \$${estimate.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppColors.green)),
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppColors.green)),
           const SizedBox(height: 24),
-          const Align(alignment: Alignment.centerLeft, child: Text('What was this for?', style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5))),
+          Align(alignment: Alignment.centerLeft, child: Text('What was this for?', style: TextStyle(color: AppColors.inkMuted, fontSize: 12.5))),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -342,7 +342,7 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 12)),
+            Text(_error!, style: TextStyle(color: AppColors.red, fontSize: 12)),
           ],
           const Spacer(),
           SizedBox(

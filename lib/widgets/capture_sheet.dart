@@ -41,7 +41,7 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
             decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(100)),
           ),
           const SizedBox(height: 16),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Text('Capture', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.ink)),
           ),
@@ -89,7 +89,7 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                     children: [
                       Icon(a.icon, color: AppColors.primaryInk, size: 22),
                       const SizedBox(height: 6),
-                      Text(a.label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.ink)),
+                      Text(a.label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: AppColors.ink)),
                     ],
                   ),
                 ),

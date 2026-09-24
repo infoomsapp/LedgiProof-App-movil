@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Background layer of the adaptive icon: the navy gradient sampled from the
+     source artwork (top-left #012F86, bottom-right #000E45). It is a vector
+     shape rather than a PNG so it stays crisp at every launcher size. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="315"
+        android:startColor="#012F86"
+        android:endColor="#000E45" />
+</shape>

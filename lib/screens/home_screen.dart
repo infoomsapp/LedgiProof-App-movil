@@ -47,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [AppColors.primary, AppColors.accent]),
+                    gradient: LinearGradient(colors: [AppColors.primary, AppColors.accent]),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Column(
@@ -64,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text('QUICK ACTIONS',
+                Text('QUICK ACTIONS',
                     style: TextStyle(color: AppColors.inkSubtle, fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
                 const SizedBox(height: 10),
                 Row(
@@ -105,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       Icon(a.icon, size: 18, color: AppColors.primaryInk),
                                       const SizedBox(height: 4),
                                       Text(a.label.split(' ').first,
-                                          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: AppColors.ink)),
+                                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: AppColors.ink)),
                                     ],
                                   ),
                                 ),
@@ -116,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 20),
                 if (snap.hasError)
-                  const Text('Could not load your review queue.', style: TextStyle(color: AppColors.red)),
+                  Text('Could not load your review queue.', style: TextStyle(color: AppColors.red)),
               ],
             );
           },

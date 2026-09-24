@@ -50,12 +50,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (snap.hasError) {
-              return const Center(child: Text('Could not load the review queue.', style: TextStyle(color: AppColors.red)));
+              return Center(child: Text('Could not load the review queue.', style: TextStyle(color: AppColors.red)));
             }
             final items = snap.data ?? [];
             if (items.isEmpty) {
               return ListView(
-                children: const [
+                children: [
                   SizedBox(height: 80),
                   Icon(Icons.check_circle_outline, color: AppColors.green, size: 40),
                   SizedBox(height: 10),
@@ -76,7 +76,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
                     decoration: BoxDecoration(color: AppColors.greenBg, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.check, color: AppColors.green),
+                    child: Icon(Icons.check, color: AppColors.green),
                   ),
                   confirmDismiss: (dir) async {
                     await _approve(tx);
@@ -101,17 +101,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(tx.merchantName ?? tx.description ?? 'Transaction',
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+                                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
                               const SizedBox(height: 2),
                               Text(
                                 tx.semaphore == 'red' ? 'Unusual amount' : 'Needs your review',
-                                style: const TextStyle(fontSize: 11, color: AppColors.inkSubtle),
+                                style: TextStyle(fontSize: 11, color: AppColors.inkSubtle),
                               ),
                             ],
                           ),
                         ),
                         Text('\$${tx.amount.abs().toStringAsFixed(2)}',
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
                       ],
                     ),
                   ),

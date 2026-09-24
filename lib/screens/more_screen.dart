@@ -1,56 +1,89 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import 'checklists_screen.dart';
+import 'connections_screen.dart';
+import 'settings_screen.dart';
+import 'timer_screen.dart';
 
-class _MoreItem {
-  final IconData icon;
-  final String label;
-  final bool destructive;
-  const _MoreItem(this.icon, this.label, {this.destructive = false});
-}
-
-const _items = [
-  _MoreItem(Icons.checklist_outlined, 'Checklists'),
-  _MoreItem(Icons.schedule_outlined, 'Time'),
-  _MoreItem(Icons.link_outlined, 'Connections'),
-  _MoreItem(Icons.settings_outlined, 'Settings'),
-];
-
+/// The overflow tab. Every row here used to answer with a "coming in the next
+/// build pass" snackbar; they now open real screens. Time reuses the timer that
+/// already existed behind the Capture sheet rather than a second copy of it.
 class MoreScreen extends StatelessWidget {
-  const MoreScreen({super.key});
+  final Workspace workspace;
+  const MoreScreen({super.key, required this.workspace});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('More', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+      appBar: AppBar(
+        title: const Text('More',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          ..._items.map((item) => _MoreRow(
-                item: item,
-                onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${item.label} — coming in the next build pass')),
-                ),
-              )),
+          _MoreRow(
+            icon: Icons.checklist_outlined,
+            label: 'Checklists',
+            subtitle: 'Open runs and their items',
+            onTap: () => _open(context, ChecklistsScreen(workspace: workspace)),
+          ),
+          _MoreRow(
+            icon: Icons.schedule_outlined,
+            label: 'Time',
+            subtitle: 'Start or stop a time entry',
+            onTap: () => _open(context, TimerScreen(workspace: workspace)),
+          ),
+          _MoreRow(
+            icon: Icons.link_outlined,
+            label: 'Connections',
+            subtitle: 'Linked bank accounts',
+            onTap: () =>
+                _open(context, ConnectionsScreen(workspace: workspace)),
+          ),
+          _MoreRow(
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            subtitle: 'Appearance and account',
+            onTap: () => _open(context, SettingsScreen(workspace: workspace)),
+          ),
           const SizedBox(height: 8),
           _MoreRow(
-            item: const _MoreItem(Icons.logout, 'Sign out', destructive: true),
+            icon: Icons.logout,
+            label: 'Sign out',
+            destructive: true,
             onTap: () => Supabase.instance.client.auth.signOut(),
           ),
         ],
       ),
     );
   }
+
+  void _open(BuildContext context, Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
 }
 
 class _MoreRow extends StatelessWidget {
-  final _MoreItem item;
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final bool destructive;
   final VoidCallback onTap;
-  const _MoreRow({required this.item, required this.onTap});
+
+  const _MoreRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.subtitle,
+    this.destructive = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final color = item.destructive ? AppColors.red : AppColors.ink;
+    final color = destructive ? AppColors.red : AppColors.ink;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -65,11 +98,30 @@ class _MoreRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(item.icon, size: 18, color: item.destructive ? AppColors.red : AppColors.inkMuted),
+              Icon(icon,
+                  size: 18,
+                  color: destructive ? AppColors.red : AppColors.inkMuted),
               const SizedBox(width: 12),
-              Text(item.label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: color)),
-              const Spacer(),
-              if (!item.destructive) const Icon(Icons.chevron_right, size: 16, color: AppColors.inkSubtle),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                            color: color)),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle!,
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.inkSubtle)),
+                    ],
+                  ],
+                ),
+              ),
+              if (!destructive)
+                Icon(Icons.chevron_right, size: 16, color: AppColors.inkSubtle),
             ],
           ),
         ),

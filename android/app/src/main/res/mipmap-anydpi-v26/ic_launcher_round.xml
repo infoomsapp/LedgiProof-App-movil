@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon (Android 8+). The artwork is split into two layers on
+     purpose: if the whole squircle were used as the foreground, the launcher
+     would apply its own mask on top and clip the rounded corners twice.
+     Here the launcher masks the gradient background, and the mark sits inside
+     the 72dp safe zone of the 108dp canvas.
+     monochrome drives the themed icons introduced in Android 13. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

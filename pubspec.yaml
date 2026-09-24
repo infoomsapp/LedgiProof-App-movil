@@ -41,3 +41,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    # The web app's own logo files, copied verbatim from
+    # LedgiProof/src/assets so the two products show the same mark.
+    # The Android launcher icon is deliberately NOT one of these: it is
+    # a separate piece of artwork (design/app_icon_source.png).
+    - assets/brand/logo_full.png
+    - assets/brand/logo_mark.png
+    # Same lockup lifted off its white plate, one variant per palette:
+    # the wordmark ink is black, so on the dark theme it is inverted to
+    # white while the blue of "Proof" and of the check is left alone.
+    - assets/brand/logo_full_onlight.png
+    - assets/brand/logo_full_ondark.png

@@ -82,9 +82,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       child: Column(
         children: [
           const Spacer(),
-          const Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.inkSubtle),
+          Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.inkSubtle),
           const SizedBox(height: 12),
-          const Text('Snap a photo of your receipt', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+          Text('Snap a photo of your receipt', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
           const Spacer(),
           SizedBox(
             width: double.infinity,
@@ -102,7 +102,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
               onPressed: () => _capture(ImageSource.gallery),
               icon: const Icon(Icons.image_outlined),
               label: const Text('Choose from gallery'),
-              style: OutlinedButton.styleFrom(foregroundColor: AppColors.ink, side: const BorderSide(color: AppColors.border), padding: const EdgeInsets.symmetric(vertical: 16)),
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.ink, side: BorderSide(color: AppColors.border), padding: const EdgeInsets.symmetric(vertical: 16)),
             ),
           ),
         ],
@@ -117,7 +117,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         children: [
           const CircularProgressIndicator(),
           const SizedBox(height: 14),
-          Text(label, style: const TextStyle(color: AppColors.inkMuted)),
+          Text(label, style: TextStyle(color: AppColors.inkMuted)),
         ],
       ),
     );
@@ -129,9 +129,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: AppColors.amber, size: 32),
+          Icon(Icons.warning_amber_rounded, color: AppColors.amber, size: 32),
           const SizedBox(height: 10),
-          Text(_error ?? 'Something went wrong.', textAlign: TextAlign.center, style: const TextStyle(color: AppColors.ink)),
+          Text(_error ?? 'Something went wrong.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.ink)),
           const SizedBox(height: 20),
           TextButton(onPressed: _reset, child: const Text('Try again')),
         ],
@@ -151,9 +151,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
+              Icon(Icons.check_circle_outline, color: AppColors.green, size: 20),
               const SizedBox(width: 8),
-              const Text('Receipt saved', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
+              Text('Receipt saved', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -164,7 +164,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           ),
           const SizedBox(height: 18),
           if (!r.hasData)
-            const Text("Couldn't read this one clearly — it's saved to your documents for your bookkeeper to review.",
+            Text("Couldn't read this one clearly — it's saved to your documents for your bookkeeper to review.",
                 style: TextStyle(color: AppColors.inkMuted, fontSize: 13))
           else ...[
             _field('Merchant', r.merchantName ?? 'Tap to enter'),
@@ -173,7 +173,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
             if (r.category != null) _field('Category', r.category!.replaceAll('_', ' ')),
           ],
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'This receipt is stored and searchable in your documents. Matching it to a bank transaction happens from Review, same as the web app.',
             style: TextStyle(fontSize: 11.5, color: AppColors.inkSubtle, height: 1.5),
           ),
@@ -191,8 +191,8 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(9)),
       child: Row(
         children: [
-          SizedBox(width: 80, child: Text(label.toUpperCase(), style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.4))),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink))),
+          SizedBox(width: 80, child: Text(label.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.4))),
+          Expanded(child: Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink))),
         ],
       ),
     );

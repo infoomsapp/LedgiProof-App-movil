@@ -6,9 +6,13 @@
     <!-- Receipt capture (image_picker camera source) -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <application
-        android:label="ledgiproof"
+        android:label="LedgiProof"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

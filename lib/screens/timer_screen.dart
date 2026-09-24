@@ -147,7 +147,7 @@ class _TimerScreenState extends State<TimerScreen> {
                     child: Center(
                       child: Text(
                         _fmt(_elapsed),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFeatures: [FontFeature.tabularFigures()],
                           fontSize: 30, fontWeight: FontWeight.w700, color: AppColors.ink,
                         ),
@@ -158,7 +158,7 @@ class _TimerScreenState extends State<TimerScreen> {
                   if (!isRunning)
                     TextField(
                       controller: _descriptionCtrl,
-                      style: const TextStyle(color: AppColors.ink),
+                      style: TextStyle(color: AppColors.ink),
                       decoration: const InputDecoration(
                         labelText: 'What are you working on? (optional)',
                         border: OutlineInputBorder(),
@@ -167,7 +167,7 @@ class _TimerScreenState extends State<TimerScreen> {
                   else
                     Text(
                       _running?.description?.isNotEmpty == true ? _running!.description! : 'Untitled entry',
-                      style: const TextStyle(color: AppColors.inkMuted, fontSize: 13),
+                      style: TextStyle(color: AppColors.inkMuted, fontSize: 13),
                     ),
                   const Spacer(),
                   SizedBox(

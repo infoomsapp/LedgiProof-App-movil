@@ -27,7 +27,7 @@ class _AppShellState extends State<AppShell> {
       ReviewScreen(workspace: widget.workspace),
       const SizedBox.shrink(), // Capture has no page -- handled in onTap below
       WorkScreen(workspace: widget.workspace),
-      const MoreScreen(),
+      MoreScreen(workspace: widget.workspace),
     ];
 
     return Scaffold(
@@ -41,7 +41,7 @@ class _AppShellState extends State<AppShell> {
           }
           setState(() => _index = i);
         },
-        items: const [
+        items: [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.insights_outlined), activeIcon: Icon(Icons.insights), label: 'Review'),
           BottomNavigationBarItem(

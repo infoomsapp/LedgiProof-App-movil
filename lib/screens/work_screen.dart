@@ -45,7 +45,7 @@ class _InvoicesList extends StatelessWidget {
         }
         final items = snap.data ?? [];
         if (items.isEmpty) {
-          return const Center(child: Text('No invoices yet', style: TextStyle(color: AppColors.inkMuted)));
+          return Center(child: Text('No invoices yet', style: TextStyle(color: AppColors.inkMuted)));
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -66,13 +66,13 @@ class _InvoicesList extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('#${inv.invoiceNumber}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+                        Text('#${inv.invoiceNumber}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
                         const SizedBox(height: 2),
-                        Text(inv.status, style: const TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
+                        Text(inv.status, style: TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
                       ],
                     ),
                   ),
-                  Text('\$${inv.total.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink)),
+                  Text('\$${inv.total.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink)),
                 ],
               ),
             );
@@ -98,7 +98,7 @@ class _ClientsList extends StatelessWidget {
         }
         final items = snap.data ?? [];
         if (items.isEmpty) {
-          return const Center(child: Text('No clients yet', style: TextStyle(color: AppColors.inkMuted)));
+          return Center(child: Text('No clients yet', style: TextStyle(color: AppColors.inkMuted)));
         }
         return ListView.separated(
           padding: const EdgeInsets.all(12),
@@ -119,20 +119,20 @@ class _ClientsList extends StatelessWidget {
                     radius: 16,
                     backgroundColor: AppColors.blueBg,
                     child: Text(c.displayName.isNotEmpty ? c.displayName[0].toUpperCase() : '?',
-                        style: const TextStyle(color: AppColors.primaryInk, fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: TextStyle(color: AppColors.primaryInk, fontWeight: FontWeight.w700, fontSize: 13)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(c.displayName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+                        Text(c.displayName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
                         if (c.companyName != null)
-                          Text(c.companyName!, style: const TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
+                          Text(c.companyName!, style: TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right, color: AppColors.inkSubtle, size: 18),
+                  Icon(Icons.chevron_right, color: AppColors.inkSubtle, size: 18),
                 ],
               ),
             );

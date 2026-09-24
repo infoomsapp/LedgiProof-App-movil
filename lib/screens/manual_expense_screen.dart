@@ -86,7 +86,7 @@ class _ManualExpenseScreenState extends State<ManualExpenseScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Type', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            Text('Type', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 6),
             Row(
               children: [
@@ -96,37 +96,37 @@ class _ManualExpenseScreenState extends State<ManualExpenseScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text('Amount', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            Text('Amount', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 6),
             TextField(
               controller: _amountCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
-              style: const TextStyle(color: AppColors.ink),
+              style: TextStyle(color: AppColors.ink),
               decoration: const InputDecoration(prefixText: '\$ ', hintText: '0.00', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            const Text('Description', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            Text('Description', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 6),
             TextField(
               controller: _descriptionCtrl,
-              style: const TextStyle(color: AppColors.ink),
+              style: TextStyle(color: AppColors.ink),
               decoration: const InputDecoration(hintText: 'e.g. Office supplies from Staples', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            const Text('Date', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+            Text('Date', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
             const SizedBox(height: 6),
             InkWell(
               onTap: _pickDate,
               child: InputDecorator(
                 decoration: const InputDecoration(border: OutlineInputBorder()),
                 child: Text('${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}',
-                    style: const TextStyle(color: AppColors.ink)),
+                    style: TextStyle(color: AppColors.ink)),
               ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 14),
-              Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 12.5)),
+              Text(_error!, style: TextStyle(color: AppColors.red, fontSize: 12.5)),
             ],
             const SizedBox(height: 24),
             FilledButton(

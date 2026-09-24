@@ -88,7 +88,7 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
   /// screens below hold their own futures keyed on orgId, so anything short of
   /// a rebuild would leave one tab showing the previous workspace's data.
   Future<void> _switchTo(Workspace target) async {
-    await _service.rememberOrg(target.orgId);
+    await _service.rememberWorkspace(target.rememberKey);
     if (!mounted) return;
     setState(() { _scope = _service.loadScope(); });
   }
@@ -140,7 +140,7 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
 
     try {
       final orgId = await _service.createPersonalOrg(controller.text.trim());
-      await _service.rememberOrg(orgId);
+      await _service.rememberWorkspace(orgId);
       if (!mounted) return;
       setState(() { _scope = _service.loadScope(); });
     } catch (_) {

@@ -145,4 +145,46 @@ void main() {
       }
     });
   });
+
+  group('remembering which workspace you were in', () {
+    // A staff membership is identified by its org. A client-of-a-firm is NOT:
+    // one profile can hold several portal memberships, and two of them can sit
+    // under the SAME firm org. The portal loader matches the remembered value
+    // against the MEMBERSHIP id, so that is what has to be stored -- storing
+    // the org id meant nothing ever matched and a client with more than one
+    // business was silently dropped back to the first on every launch.
+    test('a staff workspace remembers its org id', () {
+      final w = ws('Firm', OrgCategory.firm);
+      expect(w.rememberKey, w.orgId);
+    });
+
+    test('a portal workspace remembers its membership id, not the org', () {
+      final w = Workspace(
+        orgId: 'firm-org',
+        orgName: 'Acme',
+        role: 'client_owner',
+        isFirm: false,
+        category: OrgCategory.clientCompany,
+        isPortalClient: true,
+        portalClientId: 'client-1',
+        portalMembershipId: 'membership-1',
+      );
+      expect(w.rememberKey, 'membership-1');
+      expect(w.rememberKey, isNot(w.orgId));
+    });
+
+    test('two portal memberships under one firm stay distinguishable', () {
+      Workspace m(String id, String client) => Workspace(
+            orgId: 'same-firm',
+            orgName: client,
+            role: 'client_owner',
+            isFirm: false,
+            category: OrgCategory.clientCompany,
+            isPortalClient: true,
+            portalClientId: client,
+            portalMembershipId: id,
+          );
+      expect(m('a', 'c1').rememberKey, isNot(m('b', 'c2').rememberKey));
+    });
+  });
 }

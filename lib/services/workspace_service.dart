@@ -46,6 +46,14 @@ class Workspace {
   final String? portalClientId;
   final String? portalMembershipId;
 
+  /// What identifies this workspace when remembering the user's choice.
+  ///
+  /// For a staff membership the org id is enough. For a client-of-a-firm it is
+  /// NOT: one profile can hold several portal memberships, and two of them can
+  /// sit under the SAME firm org, so the org id cannot tell them apart. The
+  /// membership id can.
+  String get rememberKey => portalMembershipId ?? orgId;
+
   Workspace({
     required this.orgId,
     required this.orgName,
@@ -244,6 +252,11 @@ class WorkspaceService {
     }
     if (memberships.isEmpty) return null;
 
+    // Matches on membership id because that is what rememberWorkspace stored
+    // for a portal workspace (Workspace.rememberKey). It used to compare the
+    // membership id against a value that only ever held an ORG id, so nothing
+    // ever matched and a client with more than one business was silently
+    // dropped back to the first one on every launch.
     final remembered = await _readLastOrgId();
     final activeMembership = memberships.firstWhere(
       (m) => m.membershipId == remembered,
@@ -281,10 +294,12 @@ class WorkspaceService {
     return WorkspaceScope(orgs: workspaces, active: active, isToggleEligibleRole: false);
   }
 
-  Future<void> rememberOrg(String orgId) async {
+  /// Stores [Workspace.rememberKey], not necessarily an org id -- see that
+  /// getter for why a portal workspace needs its membership id instead.
+  Future<void> rememberWorkspace(String rememberKey) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastOrgKey, orgId);
+      await prefs.setString(_lastOrgKey, rememberKey);
     } catch (_) {
       // Remembering is a convenience; the switch still applies this session.
     }

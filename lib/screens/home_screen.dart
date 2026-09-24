@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/books_service.dart';
+import '../services/notification_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
 import '../widgets/workspace_switcher.dart';
 import 'manual_expense_screen.dart';
+import 'notifications_screen.dart';
 import 'receipt_capture_screen.dart';
 import 'timer_screen.dart';
 import 'trip_tracker_screen.dart';
@@ -29,12 +32,40 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _books = BooksService();
+  final _notifications = NotificationService();
   late Future<List<SemaphoreTx>> _queue;
+  int _unread = 0;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _queue = _books.getReviewQueue(widget.workspace.orgId);
+    _refreshUnread();
+    // The badge is the reason `notifications` had to join the realtime
+    // publication: without it a new message only showed up here on a manual
+    // refresh, which is the same thing that made the web's bell feel dead.
+    _channel = _notifications.subscribe(
+      orgId: widget.workspace.orgId,
+      onInsert: (_) => _refreshUnread(),
+    );
+  }
+
+  @override
+  void dispose() {
+    final c = _channel;
+    if (c != null) _notifications.unsubscribe(c);
+    super.dispose();
+  }
+
+  Future<void> _refreshUnread() async {
+    try {
+      final n = await _notifications.unreadCount(widget.workspace.orgId);
+      if (mounted) setState(() => _unread = n);
+    } catch (_) {
+      // A badge that cannot be counted is not worth an error in the user's
+      // face; it simply stays as it was.
+    }
   }
 
   @override
@@ -46,6 +77,18 @@ class _HomeScreenState extends State<HomeScreen> {
           onSwitch: widget.onSwitch,
           onCreatePersonal: widget.onCreatePersonal,
         ),
+        actions: [
+          _BellButton(
+            unread: _unread,
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) =>
+                    NotificationsScreen(workspace: widget.workspace),
+              ));
+              _refreshUnread();
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -137,6 +180,47 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+class _BellButton extends StatelessWidget {
+  final int unread;
+  final VoidCallback onTap;
+  const _BellButton({required this.unread, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        IconButton(
+          onPressed: onTap,
+          icon: Icon(Icons.notifications_none, color: AppColors.inkMuted),
+          tooltip: 'Notifications',
+        ),
+        if (unread > 0)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              constraints: const BoxConstraints(minWidth: 15),
+              decoration: BoxDecoration(
+                color: AppColors.red,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                unread > 99 ? '99+' : '$unread',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 /// One invoice with its line items, plus the online-payment path.
 ///
@@ -58,8 +59,124 @@ class InvoiceDetail {
   bool get canPayOnline => !isPaid && !isDraft && publicToken != null;
 }
 
+/// One line the user is composing. Only the four fields the phone asks for;
+/// discount and tax default at the database, exactly as they do on the web
+/// when those fields are left alone.
+class DraftItem {
+  String description;
+  double quantity;
+  double unitPrice;
+
+  DraftItem({this.description = '', this.quantity = 1, this.unitPrice = 0});
+
+  double get lineTotal => quantity * unitPrice;
+  bool get isUsable => description.trim().isNotEmpty && quantity > 0;
+}
+
 class InvoiceService {
   final _db = Supabase.instance.client;
+
+  /// Roles the invoices INSERT policy accepts. Checked before showing the
+  /// compose action so the phone never offers a write RLS will reject; the
+  /// policy remains the real gate.
+  static const _canInvoiceRoles = {'owner', 'admin', 'accountant'};
+  static bool canCreateInvoices(String role) => _canInvoiceRoles.contains(role);
+
+  /// Creates the invoice as a DRAFT, then its items, then asks the database to
+  /// recompute the totals -- the same three steps, in the same order, that
+  /// invoice.service.ts's createInvoice + upsertItems perform. Totals are
+  /// never computed on the phone: compute_invoice_totals owns that arithmetic
+  /// so a mobile invoice and a desktop one can never disagree by a cent.
+  Future<String> createDraft({
+    required String orgId,
+    required String clientId,
+    required String dueDate, // ISO yyyy-MM-dd
+    required List<DraftItem> items,
+    String currency = 'USD',
+    String? notes,
+  }) async {
+    final userId = _db.auth.currentUser?.id;
+    if (userId == null) throw StateError('No session');
+
+    final number = await _db.rpc('next_invoice_number', params: {'p_org_id': orgId});
+
+    // Non-USD invoices snapshot the rate at creation so a gain or loss can be
+    // worked out when payment lands. Same call the web makes.
+    double? fxRate;
+    if (currency != 'USD') {
+      final r = await _db.rpc('get_exchange_rate', params: {'p_currency': currency});
+      fxRate = (r as num?)?.toDouble();
+    }
+
+    final inserted = await _db
+        .from('invoices')
+        .insert({
+          'org_id': orgId,
+          'client_id': clientId,
+          'invoice_number': number as String,
+          'due_date': dueDate,
+          'notes': notes,
+          'currency': currency,
+          'fx_rate_at_creation': fxRate,
+          'status': 'draft',
+          'created_by': userId,
+        })
+        .select('id')
+        .single();
+
+    final invoiceId = inserted['id'] as String;
+
+    final usable = items.where((i) => i.isUsable).toList();
+    if (usable.isNotEmpty) {
+      await _db.from('invoice_items').insert([
+        for (var i = 0; i < usable.length; i++)
+          {
+            'invoice_id': invoiceId,
+            'org_id': orgId,
+            'sort_order': i,
+            'description': usable[i].description.trim(),
+            'quantity': usable[i].quantity,
+            'unit_price': usable[i].unitPrice,
+          }
+      ]);
+    }
+    await _db.rpc('compute_invoice_totals', params: {'p_invoice_id': invoiceId});
+    return invoiceId;
+  }
+
+  /// Marks the invoice sent and makes sure it carries a public token, which is
+  /// what the pay link and the checkout session are built from. Mirrors
+  /// markInvoiceSent(): an existing token is reused, never regenerated, so a
+  /// link already in someone's inbox keeps working.
+  Future<String> markSent(String invoiceId) async {
+    final row = await _db
+        .from('invoices')
+        .select('public_token')
+        .eq('id', invoiceId)
+        .maybeSingle();
+    final existing = row?['public_token'] as String?;
+    final token = existing ?? const Uuid().v4().replaceAll('-', '');
+
+    await _db.from('invoices').update({
+      'status': 'sent',
+      'sent_at': DateTime.now().toUtc().toIso8601String(),
+      'public_token': token,
+    }).eq('id', invoiceId);
+
+    return token;
+  }
+
+  /// Emails the client their pay link. Kept separate from [markSent] for the
+  /// same reason the web keeps them apart: marking sent has to stick even when
+  /// the mail cannot go out, so the accountant still has a link to share by
+  /// hand.
+  Future<void> sendEmail(String invoiceId) async {
+    final res = await _db.functions
+        .invoke('send-invoice-email', body: {'invoice_id': invoiceId});
+    final data = res.data;
+    final err = data is Map ? data['error'] as String? : null;
+    if (err != null) throw StateError(err);
+  }
 
   Future<InvoiceDetail> getDetail(String invoiceId) async {
     final inv = await _db

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/invoice_service.dart';
+import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
 
@@ -12,7 +13,14 @@ import '../utils/errors.dart';
 /// which is where a client actually reads the message telling them to pay.
 class InvoiceDetailScreen extends StatefulWidget {
   final String invoiceId;
-  const InvoiceDetailScreen({super.key, required this.invoiceId});
+
+  /// Present when a staff member opened this. A draft is only sendable from
+  /// here, and only by someone the invoices UPDATE policy would accept; a
+  /// client of a firm never sees the action.
+  final Workspace? workspace;
+
+  const InvoiceDetailScreen(
+      {super.key, required this.invoiceId, this.workspace});
 
   @override
   State<InvoiceDetailScreen> createState() => _InvoiceDetailScreenState();
@@ -33,6 +41,47 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     setState(() {
       _future = _service.getDetail(widget.invoiceId);
     });
+  }
+
+  bool get _canSend {
+    final w = widget.workspace;
+    return w != null &&
+        !w.isPortalClient &&
+        InvoiceService.canCreateInvoices(w.role);
+  }
+
+  /// Sends a draft that already exists. Marking sent comes first and the email
+  /// second, so a mail failure leaves the invoice sent and payable rather than
+  /// rolling the whole thing back.
+  Future<void> _send() async {
+    if (_paying) return;
+    setState(() => _paying = true);
+    var emailed = true;
+    try {
+      await _service.markSent(widget.invoiceId);
+      try {
+        await _service.sendEmail(widget.invoiceId);
+      } catch (_) {
+        emailed = false;
+      }
+      if (!mounted) return;
+      _reload();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(emailed
+              ? 'Invoice sent to your client.'
+              : 'Invoice marked sent, but the email did not go out. '
+                  'Share the pay link instead.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send: ${friendlyError(e)}')),
+      );
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
   }
 
   Future<void> _pay(InvoiceDetail inv) async {
@@ -123,7 +172,13 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                _PayArea(inv: inv, paying: _paying, onPay: () => _pay(inv)),
+                _PayArea(
+                  inv: inv,
+                  paying: _paying,
+                  onPay: () => _pay(inv),
+                  canSend: _canSend,
+                  onSend: _send,
+                ),
               ],
             ),
           );
@@ -228,8 +283,15 @@ class _PayArea extends StatelessWidget {
   final InvoiceDetail inv;
   final bool paying;
   final VoidCallback onPay;
-  const _PayArea(
-      {required this.inv, required this.paying, required this.onPay});
+  final bool canSend;
+  final VoidCallback onSend;
+  const _PayArea({
+    required this.inv,
+    required this.paying,
+    required this.onPay,
+    required this.canSend,
+    required this.onSend,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -241,10 +303,32 @@ class _PayArea extends StatelessWidget {
       );
     }
     if (inv.isDraft) {
-      return _Note(
-        icon: Icons.edit_outlined,
-        color: AppColors.inkMuted,
-        text: 'This invoice is still a draft and cannot be paid yet.',
+      if (!canSend) {
+        return _Note(
+          icon: Icons.edit_outlined,
+          color: AppColors.inkMuted,
+          text: 'This invoice is still a draft and cannot be paid yet.',
+        );
+      }
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: paying ? null : onSend,
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+          ),
+          child: paying
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Send to client',
+                  style:
+                      TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+        ),
       );
     }
     if (inv.publicToken == null) {

@@ -7,6 +7,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ledgiproof/services/workspace_service.dart';
+import 'package:ledgiproof/services/invoice_service.dart';
 import 'package:ledgiproof/widgets/capture_sheet.dart';
 
 Workspace ws(String name, OrgCategory cat, {String role = 'owner'}) => Workspace(
@@ -185,6 +186,30 @@ void main() {
             portalMembershipId: id,
           );
       expect(m('a', 'c1').rememberKey, isNot(m('b', 'c2').rememberKey));
+    });
+  });
+
+  group('who may raise an invoice', () {
+    // Mirrors the invoices INSERT policy
+    // (has_org_role owner/admin/accountant). The policy is the real gate; this
+    // keeps the phone from offering a write it would refuse, and keeps the two
+    // lists from drifting apart silently.
+    test('accepts exactly the roles the INSERT policy accepts', () {
+      for (final role in ['owner', 'admin', 'accountant']) {
+        expect(InvoiceService.canCreateInvoices(role), isTrue, reason: role);
+      }
+    });
+
+    test('refuses every other org role', () {
+      for (final role in ['auditor', 'approver', 'readonly', 'member', '']) {
+        expect(InvoiceService.canCreateInvoices(role), isFalse, reason: role);
+      }
+    });
+
+    test('refuses client-portal roles', () {
+      for (final role in ['client_owner', 'client_contact', 'client_viewer']) {
+        expect(InvoiceService.canCreateInvoices(role), isFalse, reason: role);
+      }
     });
   });
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../screens/chat_thread_screen.dart';
 import '../screens/documents_screen.dart';
+import '../screens/invoice_compose_screen.dart';
+import '../services/invoice_service.dart';
 import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
@@ -70,6 +72,22 @@ void showClientActionSheet(
               ));
             },
           ),
+          if (!workspace.isPortalClient &&
+              InvoiceService.canCreateInvoices(workspace.role)) ...[
+            Divider(height: 1, thickness: 1, color: AppColors.border),
+            _Action(
+              icon: Icons.receipt_long_outlined,
+              label: 'New invoice',
+              subtitle: 'Bill this client',
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => InvoiceComposeScreen(
+                      workspace: workspace, client: client),
+                ));
+              },
+            ),
+          ],
           Divider(height: 1, thickness: 1, color: AppColors.border),
           _Action(
             icon: Icons.folder_outlined,

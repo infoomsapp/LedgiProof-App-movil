@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/books_service.dart';
+import '../services/invoice_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/client_action_sheet.dart';
+import 'invoice_compose_screen.dart';
 import 'invoice_detail_screen.dart';
 
 /// Same tab slot, different content by role: an own-invoices list for a
@@ -27,20 +29,40 @@ class _WorkScreenState extends State<WorkScreen> {
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
       ),
       body: widget.workspace.isFirm ? _ClientsList(books: _books, workspace: widget.workspace)
-                                     : _InvoicesList(books: _books, orgId: widget.workspace.orgId),
+                                     : _InvoicesList(books: _books, workspace: widget.workspace),
+      // Only staff can invoice: the invoices INSERT policy wants
+      // owner/admin/accountant, and a client of a firm holds no org role at
+      // all. Hiding it here keeps the phone from offering a write the
+      // database would refuse.
+      floatingActionButton: (!widget.workspace.isPortalClient &&
+              InvoiceService.canCreateInvoices(widget.workspace.role))
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      InvoiceComposeScreen(workspace: widget.workspace),
+                ));
+                if (mounted) setState(() {});
+              },
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add, size: 20),
+              label: const Text('Invoice'),
+            )
+          : null,
     );
   }
 }
 
 class _InvoicesList extends StatelessWidget {
   final BooksService books;
-  final String orgId;
-  const _InvoicesList({required this.books, required this.orgId});
+  final Workspace workspace;
+  const _InvoicesList({required this.books, required this.workspace});
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<InvoiceSummary>>(
-      future: books.getInvoices(orgId),
+      future: books.getInvoices(workspace.orgId),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -58,7 +80,8 @@ class _InvoicesList extends StatelessWidget {
             return InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => InvoiceDetailScreen(invoiceId: inv.id))),
+                  builder: (_) => InvoiceDetailScreen(
+                      invoiceId: inv.id, workspace: workspace))),
               child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(

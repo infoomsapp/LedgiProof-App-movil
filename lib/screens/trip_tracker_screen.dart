@@ -125,6 +125,13 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
         userId: _userId,
         miles: double.parse(_miles.toStringAsFixed(1)),
         date: DateTime.now().toIso8601String().substring(0, 10),
+        // Real bug: a portal-client workspace's mileage RLS requires a
+        // non-null client_id matching their own client_portal_users row --
+        // this call never sent one, so every trip a portal client tracked
+        // was silently rejected by the database. A firm-staff workspace has
+        // no portalClientId at all, so this stays null for them exactly as
+        // it always has.
+        clientId: widget.workspace.portalClientId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

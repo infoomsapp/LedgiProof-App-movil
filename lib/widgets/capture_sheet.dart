@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../screens/manual_expense_screen.dart';
 import '../screens/receipt_capture_screen.dart';
 import '../screens/timer_screen.dart';
 import '../screens/trip_tracker_screen.dart';
@@ -67,6 +68,10 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                   }
                   if (a.label == 'Scan receipt') {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: workspace)));
+                    return;
+                  }
+                  if (a.label == 'Manual expense') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ManualExpenseScreen(workspace: workspace)));
                     return;
                   }
                   ScaffoldMessenger.of(context).showSnackBar(

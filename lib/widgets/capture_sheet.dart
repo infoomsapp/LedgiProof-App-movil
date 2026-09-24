@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../screens/receipt_capture_screen.dart';
 import '../screens/timer_screen.dart';
 import '../screens/trip_tracker_screen.dart';
 import '../services/workspace_service.dart';
@@ -62,6 +63,10 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                   }
                   if (a.label == 'Log a trip') {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: workspace)));
+                    return;
+                  }
+                  if (a.label == 'Scan receipt') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: workspace)));
                     return;
                   }
                   ScaffoldMessenger.of(context).showSnackBar(

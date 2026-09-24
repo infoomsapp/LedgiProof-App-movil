@@ -3,6 +3,8 @@
          background/"always" location, that scope belongs to ControlMiles). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Receipt capture (image_picker camera source) -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="ledgiproof"
         android:name="${applicationName}"

@@ -3,6 +3,7 @@ import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
+import 'receipt_capture_screen.dart';
 import 'timer_screen.dart';
 import 'trip_tracker_screen.dart';
 
@@ -79,6 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                   }
                                   if (a.label == 'Log a trip') {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: widget.workspace)));
+                                    return;
+                                  }
+                                  if (a.label == 'Scan receipt') {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: widget.workspace)));
                                     return;
                                   }
                                   showCaptureSheet(context, workspace: widget.workspace);

@@ -29,6 +29,11 @@ dependencies:
   # background service here on purpose, see trip_tracker_screen.dart) ---
   geolocator: ^13.0.2
 
+  # --- Camera capture for receipt scanning ---
+  image_picker: ^1.1.0
+  # UUID for storage paths, matching upload.service.ts's crypto.randomUUID()
+  uuid: ^4.5.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

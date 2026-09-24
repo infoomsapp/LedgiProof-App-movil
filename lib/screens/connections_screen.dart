@@ -31,26 +31,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Second line of defence. More already hides the entry in firm mode; this
-    // makes the rule hold even if the screen is reached some other way, so the
-    // gate lives with the screen rather than only with the menu that opens it.
-    if (widget.workspace.category == OrgCategory.firm) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Connections',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        ),
-        body: _Message(
-          icon: Icons.account_balance_outlined,
-          title: 'Not available in firm mode.',
-          body: 'Bank accounts belong to a set of books. Switch to your '
-              'personal workspace to see your own, or open the client from the '
-              'web app to see theirs.',
-          onRetry: () => Navigator.of(context).pop(),
-          retryLabel: 'Go back',
-        ),
-      );
-    }
+    final isFirm = widget.workspace.category == OrgCategory.firm;
 
     return Scaffold(
       appBar: AppBar(
@@ -75,7 +56,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
           if (conns.isEmpty) {
             return _Message(
               icon: Icons.account_balance_outlined,
-              title: 'No bank accounts linked.',
+              title: isFirm
+                  ? 'No client accounts linked yet.'
+                  : 'No bank accounts linked.',
               body: 'Bank accounts are linked from the web app at '
                   'ledgiproof.com; once linked they appear here.',
               onRetry: _reload,
@@ -86,7 +69,37 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(12),
               children: [
-                ...conns.map((c) => _ConnCard(conn: c)),
+                // In firm mode these are the clients' accounts, not the
+                // accountant's. Saying so up front is the whole point: the
+                // firm's own books live in the personal workspace, and the two
+                // must never be confused for one another.
+                if (isFirm)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.blueBg,
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.apartment_outlined,
+                            size: 16, color: AppColors.primary),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            'Your clients’ accounts. Your own books are in '
+                            'your personal workspace.',
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.inkMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ...conns.map((c) => _ConnCard(conn: c, showOwner: isFirm)),
                 const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -106,7 +119,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
 class _ConnCard extends StatelessWidget {
   final BankConnection conn;
-  const _ConnCard({required this.conn});
+  final bool showOwner;
+  const _ConnCard({required this.conn, this.showOwner = false});
 
   @override
   Widget build(BuildContext context) {
@@ -139,12 +153,25 @@ class _ConnCard extends StatelessWidget {
                   size: 18, color: AppColors.inkMuted),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  conn.label,
-                  style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.ink),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (showOwner && conn.clientName != null) ...[
+                      Text(conn.clientName!,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary)),
+                      const SizedBox(height: 2),
+                    ],
+                    Text(
+                      conn.label,
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -203,13 +230,11 @@ class _Message extends StatelessWidget {
   final String title;
   final String body;
   final VoidCallback onRetry;
-  final String retryLabel;
   const _Message(
       {required this.icon,
       required this.title,
       required this.body,
-      required this.onRetry,
-      this.retryLabel = 'Reload'});
+      required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -232,7 +257,7 @@ class _Message extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
             const SizedBox(height: 14),
-            TextButton(onPressed: onRetry, child: Text(retryLabel)),
+            TextButton(onPressed: onRetry, child: const Text('Reload')),
           ],
         ),
       ),

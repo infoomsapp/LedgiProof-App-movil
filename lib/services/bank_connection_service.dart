@@ -17,6 +17,10 @@ class BankConnection {
   final String? syncError;
   final DateTime? lastSyncedAt;
 
+  /// Which client this account belongs to, when the workspace is a firm.
+  /// Null in a personal or client workspace, where the books are the viewer's.
+  final String? clientName;
+
   BankConnection({
     required this.id,
     required this.institutionName,
@@ -27,6 +31,7 @@ class BankConnection {
     required this.syncStatus,
     required this.syncError,
     required this.lastSyncedAt,
+    this.clientName,
   });
 
   String get label {
@@ -48,7 +53,8 @@ class BankConnectionService {
     final rows = await _db
         .from('bank_connections')
         .select('id, institution_name, account_name, mask, account_type, '
-            'is_active, sync_status, sync_error, last_synced_at')
+            'is_active, sync_status, sync_error, last_synced_at, '
+            'clients(display_name, company_name)')
         .eq('org_id', orgId)
         .order('connected_at', ascending: false);
 
@@ -65,6 +71,10 @@ class BankConnectionService {
               lastSyncedAt: r['last_synced_at'] == null
                   ? null
                   : DateTime.tryParse(r['last_synced_at'] as String),
+              clientName: r['clients'] == null
+                  ? null
+                  : ((r['clients'] as Map)['company_name'] as String?) ??
+                      ((r['clients'] as Map)['display_name'] as String?),
             ))
         .toList();
   }

@@ -90,7 +90,7 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
   Future<void> _switchTo(Workspace target) async {
     await _service.rememberOrg(target.orgId);
     if (!mounted) return;
-    setState(() => _scope = _service.loadScope());
+    setState(() { _scope = _service.loadScope(); });
   }
 
   /// Mirrors the web's CreatePersonalOrgDialog: creating the accountant's own
@@ -142,7 +142,7 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
       final orgId = await _service.createPersonalOrg(controller.text.trim());
       await _service.rememberOrg(orgId);
       if (!mounted) return;
-      setState(() => _scope = _service.loadScope());
+      setState(() { _scope = _service.loadScope(); });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

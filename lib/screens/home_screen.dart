@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() => _queue = _books.getReviewQueue(widget.workspace.orgId));
+          setState(() { _queue = _books.getReviewQueue(widget.workspace.orgId); });
           await _queue;
         },
         child: FutureBuilder<List<SemaphoreTx>>(

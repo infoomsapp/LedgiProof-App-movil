@@ -23,7 +23,7 @@ class _ChecklistsScreenState extends State<ChecklistsScreen> {
   }
 
   void _reload() {
-    setState(() => _runs = _service.loadRuns(widget.workspace.orgId));
+    setState(() { _runs = _service.loadRuns(widget.workspace.orgId); });
   }
 
   @override

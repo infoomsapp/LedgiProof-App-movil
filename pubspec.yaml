@@ -33,6 +33,10 @@ dependencies:
   image_picker: ^1.1.0
   # UUID for storage paths, matching upload.service.ts's crypto.randomUUID()
   uuid: ^4.5.2
+  # --- Opens a PDF document's signed URL in the system browser/viewer --
+  # images stay in-app (see documents_screen.dart), matching the same
+  # PDF-external/image-in-app split the web side just adopted.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,7 @@ import '../screens/timer_screen.dart';
 import '../screens/trip_tracker_screen.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import 'client_picker_sheet.dart';
 
 /// The center "+" tab's bottom sheet -- four equal actions, per the mobile
 /// UX design (Capture is a sheet, not a screen). Mileage tracking and
@@ -34,6 +35,23 @@ const captureActions = [
 List<CaptureAction> captureActionsFor(Workspace workspace) {
   if (workspace.category != OrgCategory.firm) return captureActions;
   return captureActions.where((a) => a.label != 'Log a trip').toList();
+}
+
+/// In a firm workspace, a receipt has to belong to a client -- there is no
+/// such thing as an unscoped receipt when the accountant manages several
+/// clients' books at once (same rule bank connections already follow). A
+/// personal/portal-client workspace has nothing to pick, so it skips
+/// straight to the camera.
+Future<void> _openReceiptCapture(BuildContext context, Workspace workspace) async {
+  if (workspace.category != OrgCategory.firm) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: workspace)));
+    return;
+  }
+  final client = await pickClient(context, orgId: workspace.orgId);
+  if (client == null || !context.mounted) return;
+  Navigator.push(context, MaterialPageRoute(
+    builder: (_) => ReceiptCaptureScreen(workspace: workspace, clientId: client.id, clientName: client.displayName),
+  ));
 }
 
 void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
@@ -79,7 +97,7 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                     return;
                   }
                   if (a.label == 'Scan receipt') {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: workspace)));
+                    _openReceiptCapture(context, workspace);
                     return;
                   }
                   if (a.label == 'Manual expense') {

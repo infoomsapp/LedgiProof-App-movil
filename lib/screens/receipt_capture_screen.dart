@@ -15,7 +15,13 @@ enum _Stage { pick, uploading, extracting, done, error }
 /// expense" flow the real backend doesn't support yet.
 class ReceiptCaptureScreen extends StatefulWidget {
   final Workspace workspace;
-  const ReceiptCaptureScreen({super.key, required this.workspace});
+  /// Set in a firm workspace once a client has been chosen (see
+  /// client_picker_sheet.dart) -- attributes the receipt to that client
+  /// instead of leaving it as an unscoped org-level document. Null in a
+  /// personal/portal-client workspace, which has no client to pick.
+  final String? clientId;
+  final String? clientName;
+  const ReceiptCaptureScreen({super.key, required this.workspace, this.clientId, this.clientName});
 
   @override
   State<ReceiptCaptureScreen> createState() => _ReceiptCaptureScreenState();
@@ -39,7 +45,11 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
     });
 
     try {
-      final documentId = await _service.uploadReceipt(orgId: widget.workspace.orgId, file: File(picked.path));
+      final documentId = await _service.uploadReceipt(
+        orgId: widget.workspace.orgId,
+        file: File(picked.path),
+        clientId: widget.clientId,
+      );
       setState(() => _stage = _Stage.extracting);
       final result = await _service.extractOcr(documentId: documentId, orgId: widget.workspace.orgId);
       if (!mounted) return;
@@ -65,7 +75,12 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan receipt', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+      appBar: AppBar(
+        title: Text(
+          widget.clientName != null ? 'Scan receipt · ${widget.clientName}' : 'Scan receipt',
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
       body: switch (_stage) {
         _Stage.pick => _buildPick(),
         _Stage.uploading => _buildBusy('Uploading…'),

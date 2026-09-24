@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import 'transaction_chat_screen.dart';
 
 class ReviewScreen extends StatefulWidget {
   final Workspace workspace;
@@ -112,6 +113,18 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         ),
                         Text('\$${tx.amount.abs().toStringAsFixed(2)}',
                             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+                        const SizedBox(width: 6),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          icon: Icon(Icons.chat_bubble_outline, size: 18, color: AppColors.inkSubtle),
+                          tooltip: 'Ask about this transaction',
+                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => TransactionChatScreen(
+                              transactionId: tx.id,
+                              transactionLabel: tx.merchantName ?? tx.description ?? 'Transaction',
+                            ),
+                          )),
+                        ),
                       ],
                     ),
                   ),

@@ -27,7 +27,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   }
 
   void _reload() =>
-      setState(() => _conns = _service.load(widget.workspace.orgId));
+      setState(() { _conns = _service.load(widget.workspace.orgId); });
 
   @override
   Widget build(BuildContext context) {

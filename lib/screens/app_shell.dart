@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
+import '../widgets/chat_bubble_overlay.dart';
 import 'home_screen.dart';
 import 'more_screen.dart';
 import 'review_screen.dart';
@@ -50,7 +51,10 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _index == 2 ? 0 : _index, children: pages),
+      body: ChatBubbleOverlay(
+        workspace: widget.workspace,
+        child: IndexedStack(index: _index == 2 ? 0 : _index, children: pages),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index == 2 ? 0 : _index,
         onTap: (i) {

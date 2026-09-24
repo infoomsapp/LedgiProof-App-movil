@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/lp_chat_brand_icon.dart';
+import 'add_accountant_screen.dart';
+import 'chat_inbox_screen.dart';
 import 'checklists_screen.dart';
 import 'connections_screen.dart';
 import 'settings_screen.dart';
@@ -36,6 +39,27 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Start or stop a time entry',
             onTap: () => _open(context, TimerScreen(workspace: workspace)),
           ),
+          // Chat is scoped to a client relationship under a firm's org, which
+          // a personal workspace never has -- there is no conversation for it
+          // to show. Personal gets "Add an accountant" instead: the closest
+          // honest equivalent, since a solo user cannot self-grant org
+          // membership to anyone (real access is always created from the
+          // firm's side, via AddClientDialog on the web).
+          if (workspace.isFirm || workspace.isPortalClient)
+            _MoreRow(
+              icon: Icons.chat_bubble_outline,
+              leadingWidget: const LpChatBrandIcon(size: 22),
+              label: 'Chat',
+              subtitle: workspace.isFirm ? 'Message your clients' : 'Message your accountant',
+              onTap: () => _open(context, ChatInboxScreen(workspace: workspace)),
+            )
+          else if (workspace.category == OrgCategory.personal)
+            _MoreRow(
+              icon: Icons.person_add_alt_outlined,
+              label: 'Add an accountant',
+              subtitle: 'Invite one to manage these books',
+              onTap: () => _open(context, AddAccountantScreen(workspace: workspace)),
+            ),
           // Available in every workspace, because what it shows differs by
           // workspace rather than being allowed or forbidden: in firm mode it
           // lists the CLIENTS' accounts the firm looks after, and in a personal
@@ -77,6 +101,7 @@ class MoreScreen extends StatelessWidget {
 
 class _MoreRow extends StatelessWidget {
   final IconData icon;
+  final Widget? leadingWidget;
   final String label;
   final String? subtitle;
   final bool destructive;
@@ -86,6 +111,7 @@ class _MoreRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.leadingWidget,
     this.subtitle,
     this.destructive = false,
   });
@@ -107,9 +133,10 @@ class _MoreRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon,
-                  size: 18,
-                  color: destructive ? AppColors.red : AppColors.inkMuted),
+              leadingWidget ??
+                  Icon(icon,
+                      size: 18,
+                      color: destructive ? AppColors.red : AppColors.inkMuted),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

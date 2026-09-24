@@ -19,7 +19,20 @@ class InvoiceComposeScreen extends StatefulWidget {
   /// firm workspace, where the first step is choosing who it is for.
   final ClientSummary? client;
 
-  const InvoiceComposeScreen({super.key, required this.workspace, this.client});
+  /// Set to edit an existing DRAFT instead of composing a new invoice. The
+  /// client cannot be changed once an invoice exists -- moving a document
+  /// between clients is a different operation from correcting its contents,
+  /// and the web does not offer it either.
+  final InvoiceDetail? editing;
+
+  const InvoiceComposeScreen({
+    super.key,
+    required this.workspace,
+    this.client,
+    this.editing,
+  });
+
+  bool get isEditing => editing != null;
 
   @override
   State<InvoiceComposeScreen> createState() => _InvoiceComposeScreenState();
@@ -39,6 +52,21 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   void initState() {
     super.initState();
     _client = widget.client;
+
+    final editing = widget.editing;
+    if (editing != null) {
+      if (editing.dueDate != null) _dueDate = editing.dueDate!;
+      _notesCtrl.text = editing.notes ?? '';
+      if (editing.items.isNotEmpty) {
+        _items
+          ..clear()
+          ..addAll(editing.items.map((i) => DraftItem(
+                description: i.description,
+                quantity: i.quantity,
+                unitPrice: i.unitPrice,
+              )));
+      }
+    }
   }
 
   @override
@@ -50,7 +78,10 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   double get _total =>
       _items.where((i) => i.isUsable).fold(0.0, (sum, i) => sum + i.lineTotal);
 
-  bool get _canSave => _client != null && _items.any((i) => i.isUsable);
+  // When editing, the client is fixed and already on the invoice, so it is
+  // not part of what makes the form valid.
+  bool get _canSave =>
+      (widget.isEditing || _client != null) && _items.any((i) => i.isUsable);
 
   Future<void> _pickClient() async {
     try {
@@ -112,13 +143,29 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
     if (!_canSave || _busy) return;
     setState(() => _busy = true);
     try {
-      final invoiceId = await _service.createDraft(
-        orgId: widget.workspace.orgId,
-        clientId: _client!.id,
-        dueDate: _dueDate.toIso8601String().substring(0, 10),
-        items: _items,
-        notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-      );
+      final notes =
+          _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
+      final dueDate = _dueDate.toIso8601String().substring(0, 10);
+
+      final String invoiceId;
+      if (widget.isEditing) {
+        invoiceId = widget.editing!.id;
+        await _service.updateDraft(
+          invoiceId: invoiceId,
+          orgId: widget.workspace.orgId,
+          dueDate: dueDate,
+          items: _items,
+          notes: notes,
+        );
+      } else {
+        invoiceId = await _service.createDraft(
+          orgId: widget.workspace.orgId,
+          clientId: _client!.id,
+          dueDate: dueDate,
+          items: _items,
+          notes: notes,
+        );
+      }
 
       var emailed = true;
       if (send) {
@@ -138,7 +185,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(!send
-              ? 'Draft saved.'
+              ? (widget.isEditing ? 'Changes saved.' : 'Draft saved.')
               : emailed
                   ? 'Invoice sent to your client.'
                   : 'Invoice marked sent, but the email did not go out. '
@@ -159,20 +206,27 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New invoice',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        title: Text(
+            widget.isEditing
+                ? 'Edit invoice #${widget.editing!.invoiceNumber}'
+                : 'New invoice',
+            style:
+                const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _Row(
-            icon: Icons.person_outline,
-            label: 'Client',
-            value: _client?.displayName ?? 'Choose a client',
-            muted: _client == null,
-            onTap: _busy ? null : _pickClient,
-          ),
-          const SizedBox(height: 10),
+          // Not shown while editing: the invoice already belongs to someone.
+          if (!widget.isEditing) ...[
+            _Row(
+              icon: Icons.person_outline,
+              label: 'Client',
+              value: _client?.displayName ?? 'Choose a client',
+              muted: _client == null,
+              onTap: _busy ? null : _pickClient,
+            ),
+            const SizedBox(height: 10),
+          ],
           _Row(
             icon: Icons.event_outlined,
             label: 'Due',
@@ -252,14 +306,15 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Send to client',
-                    style:
-                        TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                : Text(
+                    widget.isEditing ? 'Save and send' : 'Send to client',
+                    style: const TextStyle(
+                        fontSize: 14.5, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 8),
           TextButton(
             onPressed: (!_canSave || _busy) ? null : () => _save(send: false),
-            child: const Text('Save as draft'),
+            child: Text(widget.isEditing ? 'Save changes' : 'Save as draft'),
           ),
         ],
       ),

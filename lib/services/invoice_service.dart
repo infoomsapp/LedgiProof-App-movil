@@ -144,6 +144,55 @@ class InvoiceService {
     return invoiceId;
   }
 
+  /// Rewrites a DRAFT invoice: its header fields, then its lines, then the
+  /// server-side total. Mirrors updateInvoice + upsertItems: the lines are
+  /// deleted and reinserted rather than diffed, which is what the web does and
+  /// what keeps sort_order honest without tracking per-row edits.
+  ///
+  /// Draft only, matching the web. Editing an invoice the client has already
+  /// received would change a document they are holding; the status check here
+  /// is a courtesy on top of that rule, not the enforcement -- a locked
+  /// accounting period is refused by the database's own trigger either way.
+  Future<void> updateDraft({
+    required String invoiceId,
+    required String orgId,
+    required String dueDate,
+    required List<DraftItem> items,
+    String? notes,
+  }) async {
+    final current = await _db
+        .from('invoices')
+        .select('status')
+        .eq('id', invoiceId)
+        .single();
+    if ((current['status'] as String?) != 'draft') {
+      throw StateError('Only a draft can be edited.');
+    }
+
+    await _db.from('invoices').update({
+      'due_date': dueDate,
+      'notes': notes,
+    }).eq('id', invoiceId);
+
+    await _db.from('invoice_items').delete().eq('invoice_id', invoiceId);
+
+    final usable = items.where((i) => i.isUsable).toList();
+    if (usable.isNotEmpty) {
+      await _db.from('invoice_items').insert([
+        for (var i = 0; i < usable.length; i++)
+          {
+            'invoice_id': invoiceId,
+            'org_id': orgId,
+            'sort_order': i,
+            'description': usable[i].description.trim(),
+            'quantity': usable[i].quantity,
+            'unit_price': usable[i].unitPrice,
+          }
+      ]);
+    }
+    await _db.rpc('compute_invoice_totals', params: {'p_invoice_id': invoiceId});
+  }
+
   /// Marks the invoice sent and makes sure it carries a public token, which is
   /// what the pay link and the checkout session are built from. Mirrors
   /// markInvoiceSent(): an existing token is reused, never regenerated, so a

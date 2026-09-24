@@ -4,6 +4,7 @@ import '../services/invoice_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import 'invoice_compose_screen.dart';
 
 /// One invoice, and the button to pay it.
 ///
@@ -82,6 +83,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     } finally {
       if (mounted) setState(() => _paying = false);
     }
+  }
+
+  Future<void> _edit(InvoiceDetail inv) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => InvoiceComposeScreen(
+        workspace: widget.workspace!,
+        editing: inv,
+      ),
+    ));
+    if (mounted) _reload();
   }
 
   Future<void> _pay(InvoiceDetail inv) async {
@@ -178,6 +189,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   onPay: () => _pay(inv),
                   canSend: _canSend,
                   onSend: _send,
+                  onEdit: () => _edit(inv),
                 ),
               ],
             ),
@@ -285,12 +297,14 @@ class _PayArea extends StatelessWidget {
   final VoidCallback onPay;
   final bool canSend;
   final VoidCallback onSend;
+  final VoidCallback onEdit;
   const _PayArea({
     required this.inv,
     required this.paying,
     required this.onPay,
     required this.canSend,
     required this.onSend,
+    required this.onEdit,
   });
 
   @override
@@ -310,25 +324,36 @@ class _PayArea extends StatelessWidget {
           text: 'This invoice is still a draft and cannot be paid yet.',
         );
       }
-      return SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          onPressed: paying ? null : onSend,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            padding: const EdgeInsets.symmetric(vertical: 15),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton(
+            onPressed: paying ? null : onSend,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+            child: paying
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Send to client',
+                    style:
+                        TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
           ),
-          child: paying
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Text('Send to client',
-                  style:
-                      TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-        ),
+          const SizedBox(height: 6),
+          // Editing is offered only while the invoice is still a draft, the
+          // same rule the web applies: once it is sent the client is holding
+          // that document.
+          TextButton.icon(
+            onPressed: paying ? null : onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 17),
+            label: const Text('Edit this draft'),
+          ),
+        ],
       );
     }
     if (inv.publicToken == null) {

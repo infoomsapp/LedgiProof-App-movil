@@ -46,6 +46,13 @@ class Workspace {
   final String? portalClientId;
   final String? portalMembershipId;
 
+  /// The accounting firm's own name -- set only for a portal-client
+  /// workspace, where [orgName] deliberately holds the CLIENT's own business
+  /// name instead (so the Firm/Personal-style switcher reads "which of my
+  /// businesses", not "which firm"). Chat screens need the opposite: a
+  /// client talking to their firm should see the firm's name, not their own.
+  final String? firmName;
+
   /// Human label for [role]. Real gap fixed 2026-09-24: a portal-client
   /// workspace's role (client_owner/client_contact/client_viewer) was shown
   /// as the raw snake_case string everywhere in this app -- nowhere told the
@@ -82,6 +89,7 @@ class Workspace {
     this.isPortalClient = false,
     this.portalClientId,
     this.portalMembershipId,
+    this.firmName,
   });
 }
 
@@ -299,6 +307,7 @@ class WorkspaceService {
               isPortalClient: true,
               portalClientId: m.clientId,
               portalMembershipId: m.membershipId,
+              firmName: m.orgName,
             ))
         .toList();
 

@@ -107,7 +107,12 @@ class _ConversationRow extends StatelessWidget {
             workspace: workspace,
             conversationId: conversation.id,
             clientId: conversation.clientId,
-            clientName: conversation.clientName,
+            // A portal client talking to their firm sees the firm's name,
+            // not their own business name back at themselves -- staff still
+            // sees the actual client's name, same as before.
+            clientName: workspace.isPortalClient
+                ? (workspace.firmName ?? workspace.orgName)
+                : conversation.clientName,
           ),
         ));
         onOpened();
@@ -126,7 +131,9 @@ class _ConversationRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    conversation.clientName,
+                    workspace.isPortalClient
+                        ? (workspace.firmName ?? workspace.orgName)
+                        : conversation.clientName,
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: unread ? FontWeight.w700 : FontWeight.w500,

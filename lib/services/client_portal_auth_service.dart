@@ -86,6 +86,17 @@ class ClientPortalAuthService {
       },
     );
     if (res.session == null) {
+      // Supabase silently no-ops signUp() for an email that already has an
+      // account (no error, no session, no email sent) to avoid leaking
+      // which emails exist -- its own documented signal is an empty
+      // identities list. Without checking it, this always claimed a
+      // confirmation email was on its way even when none was ever sent.
+      final alreadyRegistered = (res.user?.identities?.isEmpty ?? true);
+      if (alreadyRegistered) {
+        throw StateError(
+          'This email already has an account. Use "I have an account" above and sign in instead.',
+        );
+      }
       throw StateError(
         'Check your email to confirm your account, then sign in and accept the invitation again.',
       );

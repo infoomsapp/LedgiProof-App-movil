@@ -159,7 +159,7 @@ class _AcceptInviteScreenState extends State<AcceptInviteScreen> {
           style: TextStyle(color: AppColors.ink),
           decoration: const InputDecoration(
             labelText: 'Invite link or code',
-            hintText: 'https://app.ledgiproof.com/accept-client-portal/…',
+            hintText: 'https://app.ledgiproof.com/…/TOKEN or just the code',
             border: OutlineInputBorder(),
           ),
         ),

@@ -35,15 +35,25 @@ class InvitationPreview {
 class ClientPortalAuthService {
   final _db = Supabase.instance.client;
 
-  /// Accepts either a bare token or a full pasted invite URL
-  /// (`.../accept-client-portal/TOKEN`) -- a client copy-pasting straight
-  /// from the email is the realistic case, not hand-typing a raw token.
+  /// Accepts either a bare token or a full pasted invite URL -- a client
+  /// copy-pasting straight from the email is the realistic case, not
+  /// hand-typing a raw token. Two URL shapes reach real people: the email
+  /// link (`.../accept-client-portal/TOKEN`) and the logged-out redirect a
+  /// browser lands on (`.../client-portal-activate/TOKEN`) -- both must
+  /// parse, since either one can end up pasted here.
   static String extractToken(String input) {
     final trimmed = input.trim();
-    final marker = 'accept-client-portal/';
-    final idx = trimmed.indexOf(marker);
-    if (idx == -1) return trimmed;
-    return trimmed.substring(idx + marker.length).split(RegExp(r'[?#]')).first;
+    for (final marker in const ['accept-client-portal/', 'client-portal-activate/']) {
+      final idx = trimmed.indexOf(marker);
+      if (idx != -1) {
+        return trimmed.substring(idx + marker.length).split(RegExp(r'[?#]')).first;
+      }
+    }
+    if (trimmed.contains('://')) {
+      final path = trimmed.split(RegExp(r'[?#]')).first;
+      return path.split('/').where((s) => s.isNotEmpty).last;
+    }
+    return trimmed;
   }
 
   Future<InvitationPreview> preview(String token) async {

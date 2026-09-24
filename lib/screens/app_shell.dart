@@ -36,7 +36,7 @@ class _AppShellState extends State<AppShell> {
         currentIndex: _index == 2 ? 0 : _index,
         onTap: (i) {
           if (i == 2) {
-            showCaptureSheet(context);
+            showCaptureSheet(context, workspace: widget.workspace);
             return;
           }
           setState(() => _index = i);

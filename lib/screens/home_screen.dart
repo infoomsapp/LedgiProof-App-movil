@@ -3,6 +3,7 @@ import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
+import 'timer_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Workspace workspace;
@@ -70,7 +71,13 @@ class _HomeScreenState extends State<HomeScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 3),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(10),
-                                onTap: () => showCaptureSheet(context),
+                                onTap: () {
+                                  if (a.label == 'Log time') {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: widget.workspace)));
+                                    return;
+                                  }
+                                  showCaptureSheet(context, workspace: widget.workspace);
+                                },
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   decoration: BoxDecoration(

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../screens/timer_screen.dart';
+import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 
 /// The center "+" tab's bottom sheet -- four equal actions, per the mobile
@@ -19,7 +21,7 @@ const captureActions = [
   CaptureAction(Icons.edit_outlined, 'Manual expense'),
 ];
 
-void showCaptureSheet(BuildContext context) {
+void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
   showModalBottomSheet(
     context: context,
     backgroundColor: AppColors.surface,
@@ -53,6 +55,10 @@ void showCaptureSheet(BuildContext context) {
                 borderRadius: BorderRadius.circular(12),
                 onTap: () {
                   Navigator.pop(ctx);
+                  if (a.label == 'Log time') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: workspace)));
+                    return;
+                  }
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('${a.label} — coming in the next build pass')),
                   );

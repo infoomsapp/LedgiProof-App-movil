@@ -55,6 +55,13 @@ class _ManualExpenseScreenState extends State<ManualExpenseScreen> {
         magnitude: magnitude,
         description: _descriptionCtrl.text.trim(),
         date: _date.toIso8601String().substring(0, 10),
+        // Real bug found in the mobile audit: this never passed a clientId,
+        // so a portal-client's expense always hit create-transaction with
+        // client_id: null -- which failed authorization entirely (the edge
+        // function only checked organization_memberships, a portal client
+        // never has one). Null stays correct for a genuine personal/solo
+        // workspace, which has no client to scope to.
+        clientId: widget.workspace.portalClientId,
       );
       if (!mounted) return;
       Navigator.pop(context);

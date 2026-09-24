@@ -40,11 +40,18 @@ List<CaptureAction> captureActionsFor(Workspace workspace) {
 /// In a firm workspace, a receipt has to belong to a client -- there is no
 /// such thing as an unscoped receipt when the accountant manages several
 /// clients' books at once (same rule bank connections already follow). A
-/// personal/portal-client workspace has nothing to pick, so it skips
-/// straight to the camera.
+/// personal workspace has nothing to pick, so it skips straight to the
+/// camera. A portal-client workspace also skips the picker (there's only
+/// ever one answer: themselves) but real bug found in the mobile audit:
+/// this used to leave clientId null even then, and register_document's own
+/// authorization requires a non-null, matching client_id for a caller with
+/// no organization_memberships row -- every receipt a portal client scanned
+/// failed with "unauthorized: not a member of this org or client".
 Future<void> _openReceiptCapture(BuildContext context, Workspace workspace) async {
   if (workspace.category != OrgCategory.firm) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: workspace)));
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => ReceiptCaptureScreen(workspace: workspace, clientId: workspace.portalClientId),
+    ));
     return;
   }
   final client = await pickClient(context, orgId: workspace.orgId);

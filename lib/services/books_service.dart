@@ -76,23 +76,11 @@ class BooksService {
     return (rows as List).map((r) => InvoiceSummary.fromRow(r as Map<String, dynamic>)).toList();
   }
 
-  Future<List<ClientSummary>> getClients(String orgId, {int limit = 50}) =>
-      getClientsForOrgs([orgId], limit: limit);
-
-  /// Clients across several workspaces.
-  ///
-  /// Needed because an accountant's clients live in their FIRM workspace while
-  /// their own mileage is logged in their PERSONAL one: tagging which client a
-  /// visit was for has to look outside the workspace the entry is being written
-  /// to. RLS still applies per user, so this can only ever return clients of
-  /// orgs the caller actually belongs to.
-  Future<List<ClientSummary>> getClientsForOrgs(List<String> orgIds,
-      {int limit = 50}) async {
-    if (orgIds.isEmpty) return [];
+  Future<List<ClientSummary>> getClients(String orgId, {int limit = 50}) async {
     final rows = await _db
         .from('clients')
         .select('id, display_name, company_name')
-        .inFilter('org_id', orgIds)
+        .eq('org_id', orgId)
         .eq('is_active', true)
         .order('display_name', ascending: true)
         .limit(limit);

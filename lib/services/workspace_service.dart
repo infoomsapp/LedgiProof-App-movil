@@ -26,12 +26,25 @@ extension OrgCategoryLabel on OrgCategory {
 /// web app's fuller useUserRole() matrix. Just enough to decide what the
 /// "Work" tab shows: an org's own invoices (solo/PYME) vs its client list
 /// (a bookkeeping/accountant firm), via organizations.is_firm.
+///
+/// A client-of-a-firm profile is represented the same class, not a separate
+/// type: [isPortalClient] true + [portalClientId] set is the only thing that
+/// distinguishes it from an organization_memberships row. Screens that read
+/// data through RLS (BooksService etc.) don't need to know the difference --
+/// the same org_id-scoped query returns the right rows either way, because
+/// [WorkspaceService.loadScope] already synced profiles.client_id server-side
+/// before this Workspace is handed out. What DOES need to know is anything
+/// that would otherwise offer a staff-only action (Capture, Connections) --
+/// those check [isPortalClient] directly.
 class Workspace {
   final String orgId;
   final String orgName;
-  final String role; // owner / admin / accountant / auditor / approver / readonly
+  final String role; // owner/admin/accountant/... OR client_owner/client_contact/client_viewer
   final bool isFirm;
   final OrgCategory category;
+  final bool isPortalClient;
+  final String? portalClientId;
+  final String? portalMembershipId;
 
   Workspace({
     required this.orgId,
@@ -39,7 +52,30 @@ class Workspace {
     required this.role,
     required this.isFirm,
     this.category = OrgCategory.unknown,
+    this.isPortalClient = false,
+    this.portalClientId,
+    this.portalMembershipId,
   });
+}
+
+/// One row from get_client_portal_memberships() -- mirrors
+/// src/store/client-portal.store.ts's ClientPortalMembership exactly, same
+/// RPC, same fields.
+class ClientPortalMembership {
+  final String membershipId;
+  final String orgId;
+  final String orgName;
+  final String clientId;
+  final String clientName;
+  final String role;
+
+  ClientPortalMembership.fromRow(Map<String, dynamic> row)
+      : membershipId = row['membership_id'] as String,
+        orgId = row['org_id'] as String,
+        orgName = (row['org_name'] as String?) ?? 'Workspace',
+        clientId = row['client_id'] as String,
+        clientName = (row['client_name'] as String?) ?? 'Client',
+        role = row['role'] as String;
 }
 
 /// Everything the shell needs to offer the Firm / Personal switch.
@@ -140,7 +176,17 @@ class WorkspaceService {
       ));
     }
 
-    if (orgs.isEmpty) return null;
+    if (orgs.isEmpty) {
+      // Not an org member at all -- try the client-portal path before giving
+      // up. This is the fix for the real, disclosed bug: a client who
+      // accepted a portal invitation has no organization_memberships row
+      // (by design -- see client-portal.store.ts on the web), so this used
+      // to fall straight through to "Could not load your workspace." Same
+      // RPC the web uses, and the same profiles.client_id sync the web's
+      // fixed accept flow now performs server-side -- this client just
+      // needs the mobile side to actually ask.
+      return _loadPortalClientScope(userId);
+    }
 
     // Stable order so the picker never reshuffles: firm, personal, client.
     orgs.sort((a, b) {
@@ -168,6 +214,71 @@ class WorkspaceService {
       isToggleEligibleRole:
           systemRole != null && _toggleEligibleRoles.contains(systemRole),
     );
+  }
+
+  /// Same RPC src/store/client-portal.store.ts's loadMemberships() calls --
+  /// scoped to auth.uid() itself, no args needed.
+  Future<List<ClientPortalMembership>> _getClientPortalMemberships() async {
+    final rows = await _db.rpc('get_client_portal_memberships');
+    return (rows as List)
+        .map((r) => ClientPortalMembership.fromRow(Map<String, dynamic>.from(r as Map)))
+        .toList();
+  }
+
+  /// Same RPC the web's fixed setActiveMembership()/loadMemberships() call --
+  /// keeps profiles.client_id (what every client-scoped RLS policy actually
+  /// reads) in sync with whichever membership this session is using. Called
+  /// on every load, not just an explicit switch, for the same reason the web
+  /// does it on every load: the remembered choice could differ from whatever
+  /// profiles.client_id was last left at.
+  Future<void> switchActiveClientPortalMembership(String clientId) async {
+    await _db.rpc('switch_active_client_portal_membership', params: {'p_client_id': clientId});
+  }
+
+  Future<WorkspaceScope?> _loadPortalClientScope(String userId) async {
+    List<ClientPortalMembership> memberships;
+    try {
+      memberships = await _getClientPortalMemberships();
+    } catch (_) {
+      return null;
+    }
+    if (memberships.isEmpty) return null;
+
+    final remembered = await _readLastOrgId();
+    final activeMembership = memberships.firstWhere(
+      (m) => m.membershipId == remembered,
+      orElse: () => memberships.first,
+    );
+
+    try {
+      await switchActiveClientPortalMembership(activeMembership.clientId);
+    } catch (_) {
+      // Best-effort, matching the web's loadMemberships() -- an explicit
+      // switch later surfaces its own error instead of blocking the load.
+    }
+
+    final workspaces = memberships
+        .map((m) => Workspace(
+              orgId: m.orgId,
+              orgName: m.clientName, // the business THEY see, not the firm's name
+              role: m.role,
+              isFirm: false,
+              category: OrgCategory.clientCompany,
+              isPortalClient: true,
+              portalClientId: m.clientId,
+              portalMembershipId: m.membershipId,
+            ))
+        .toList();
+
+    final active = workspaces.firstWhere(
+      (w) => w.portalMembershipId == activeMembership.membershipId,
+      orElse: () => workspaces.first,
+    );
+
+    // A client-portal user is never staff -- the Personal/Firm switch never
+    // applies to them, same as the web's OrgSelector rule (system_role must
+    // be bookkeeper/admin/super_admin, which no client_user ever is).
+    return WorkspaceScope(orgs: workspaces, active: active, isToggleEligibleRole: false);
   }
 
   Future<void> rememberOrg(String orgId) async {

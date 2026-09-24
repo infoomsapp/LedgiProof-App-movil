@@ -2,14 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/books_service.dart';
 import '../services/mileage_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 
 enum _TrackerStage { checkingConnection, connectedElsewhere, idle, running, choosingPurpose, saving }
 
-enum _Purpose { business, personal, client }
+enum _Purpose { business, personal }
 
 /// The basic in-app trip tracker from the mobile UX design: Start -> Stop ->
 /// purpose, nothing else (no odometer photo, no fraud scoring -- that stays
@@ -26,7 +25,6 @@ class TripTrackerScreen extends StatefulWidget {
 
 class _TripTrackerScreenState extends State<TripTrackerScreen> {
   final _mileage = MileageService();
-  final _books = BooksService();
 
   _TrackerStage _stage = _TrackerStage.checkingConnection;
   StreamSubscription<Position>? _positionSub;
@@ -36,8 +34,6 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
   Duration _elapsed = Duration.zero;
   Timer? _clock;
   _Purpose _purpose = _Purpose.business;
-  String? _clientId;
-  String? _clientLabel;
   String? _error;
 
   String get _userId => Supabase.instance.client.auth.currentUser!.id;
@@ -107,47 +103,6 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
     setState(() => _stage = _TrackerStage.choosingPurpose);
   }
 
-  Future<void> _pickClient() async {
-    try {
-      // Which workspaces to offer clients from. In a personal workspace the
-      // accountant has no clients of their own -- theirs live in the firm --
-      // so asking only for the current org would show an empty list, which is
-      // exactly the flow taken when logging a drive out to visit a client.
-      // The entry still SAVES to the personal workspace: the trip is the
-      // accountant's own deduction, and the client is only the reason for it.
-      var sourceOrgIds = [widget.workspace.orgId];
-      if (widget.workspace.category == OrgCategory.personal) {
-        final scope = await WorkspaceService().loadScope();
-        final firmIds = scope?.firmOrgs.map((o) => o.orgId).toList() ?? [];
-        if (firmIds.isNotEmpty) sourceOrgIds = firmIds;
-      }
-      final clients = await _books.getClientsForOrgs(sourceOrgIds);
-      if (!mounted) return;
-      final selected = await showModalBottomSheet<ClientSummary>(
-        context: context,
-        backgroundColor: AppColors.surface,
-        builder: (ctx) => ListView(
-          shrinkWrap: true,
-          children: clients
-              .map((c) => ListTile(
-                    title: Text(c.displayName, style: TextStyle(color: AppColors.ink)),
-                    onTap: () => Navigator.pop(ctx, c),
-                  ))
-              .toList(),
-        ),
-      );
-      if (selected != null) {
-        setState(() {
-          _purpose = _Purpose.client;
-          _clientId = selected.id;
-          _clientLabel = selected.displayName;
-        });
-      }
-    } catch (_) {
-      setState(() => _error = 'Could not load your clients.');
-    }
-  }
-
   Future<void> _confirmPurpose() async {
     if (_purpose == _Purpose.personal) {
       // mileage_entries is a deduction table, not a trip log -- a personal
@@ -169,8 +124,6 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
         userId: _userId,
         miles: double.parse(_miles.toStringAsFixed(1)),
         date: DateTime.now().toIso8601String().substring(0, 10),
-        purpose: _purpose == _Purpose.client && _clientLabel != null ? 'Client: $_clientLabel' : null,
-        clientId: _clientId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,8 +145,6 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
       _meters = 0;
       _elapsed = Duration.zero;
       _purpose = _Purpose.business;
-      _clientId = null;
-      _clientLabel = null;
     });
   }
 
@@ -389,8 +340,6 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
               Expanded(child: _purposeChip('Business', _Purpose.business)),
               const SizedBox(width: 8),
               Expanded(child: _purposeChip('Personal', _Purpose.personal)),
-              const SizedBox(width: 8),
-              Expanded(child: _purposeChip(_clientLabel ?? 'Client', _Purpose.client, onTap: _pickClient)),
             ],
           ),
           if (_error != null) ...[

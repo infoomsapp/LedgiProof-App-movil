@@ -109,7 +109,19 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
 
   Future<void> _pickClient() async {
     try {
-      final clients = await _books.getClients(widget.workspace.orgId);
+      // Which workspaces to offer clients from. In a personal workspace the
+      // accountant has no clients of their own -- theirs live in the firm --
+      // so asking only for the current org would show an empty list, which is
+      // exactly the flow taken when logging a drive out to visit a client.
+      // The entry still SAVES to the personal workspace: the trip is the
+      // accountant's own deduction, and the client is only the reason for it.
+      var sourceOrgIds = [widget.workspace.orgId];
+      if (widget.workspace.category == OrgCategory.personal) {
+        final scope = await WorkspaceService().loadScope();
+        final firmIds = scope?.firmOrgs.map((o) => o.orgId).toList() ?? [];
+        if (firmIds.isNotEmpty) sourceOrgIds = firmIds;
+      }
+      final clients = await _books.getClientsForOrgs(sourceOrgIds);
       if (!mounted) return;
       final selected = await showModalBottomSheet<ClientSummary>(
         context: context,

@@ -83,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(color: AppColors.inkSubtle, fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
                 const SizedBox(height: 10),
                 Row(
-                  children: captureActions
+                  children: captureActionsFor(widget.workspace)
                       .map((a) => Expanded(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 3),

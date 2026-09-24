@@ -200,6 +200,47 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Second line of defence, matching ConnectionsScreen. Capture already drops
+    // this action in firm mode; the gate is repeated here so it holds no matter
+    // which entry point led here, including a stale route.
+    if (widget.workspace.category == OrgCategory.firm) {
+      return Scaffold(
+        appBar: AppBar(
+            title: const Text('Log a trip',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.navigation_outlined,
+                    size: 30, color: AppColors.inkSubtle),
+                const SizedBox(height: 12),
+                Text('Not available in firm mode.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink)),
+                const SizedBox(height: 6),
+                Text(
+                  'A trip is a deduction against one set of books. Switch to '
+                  'your personal workspace to log your own driving.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
+                ),
+                const SizedBox(height: 14),
+                TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Go back')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Log a trip', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
       body: switch (_stage) {

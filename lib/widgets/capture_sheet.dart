@@ -24,6 +24,18 @@ const captureActions = [
   CaptureAction(Icons.edit_outlined, 'Manual expense'),
 ];
 
+/// What Capture offers in the workspace you are actually in.
+///
+/// Mileage is dropped in firm mode, for the same reason bank connections are:
+/// a trip is a deduction against one set of books, and a firm workspace is not
+/// one. An accountant logs their own driving in their personal workspace. The
+/// filter lives here because both the Capture sheet and the Home quick-action
+/// row read this list, and a rule written twice is a rule that drifts.
+List<CaptureAction> captureActionsFor(Workspace workspace) {
+  if (workspace.category != OrgCategory.firm) return captureActions;
+  return captureActions.where((a) => a.label != 'Log a trip').toList();
+}
+
 void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
   showModalBottomSheet(
     context: context,
@@ -53,7 +65,7 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
             childAspectRatio: 1.6,
-            children: captureActions.map((a) {
+            children: captureActionsFor(workspace).map((a) {
               return InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: () {

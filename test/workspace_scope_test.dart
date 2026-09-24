@@ -7,6 +7,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ledgiproof/services/workspace_service.dart';
+import 'package:ledgiproof/widgets/capture_sheet.dart';
 
 Workspace ws(String name, OrgCategory cat, {String role = 'owner'}) => Workspace(
       orgId: name,
@@ -116,6 +117,32 @@ void main() {
         scopeOf([ws('Firm', OrgCategory.firm)], eligible: true).hasPersonal,
         isFalse,
       );
+    });
+  });
+
+  group('what Capture offers per workspace', () {
+    // Mileage and bank connections are deductions against one set of books, and
+    // a firm workspace is not one. These guard the rule at the only place it is
+    // written, since both the Capture sheet and the Home quick actions read it.
+    test('firm mode drops mileage and keeps everything else', () {
+      final actions = captureActionsFor(ws('Firm', OrgCategory.firm));
+      expect(actions.map((a) => a.label), isNot(contains('Log a trip')));
+      expect(actions.map((a) => a.label),
+          containsAll(['Scan receipt', 'Log time', 'Manual expense']));
+    });
+
+    test('personal and client workspaces keep mileage', () {
+      for (final cat in [
+        OrgCategory.personal,
+        OrgCategory.clientCompany,
+        OrgCategory.unknown
+      ]) {
+        expect(
+          captureActionsFor(ws('W', cat)).map((a) => a.label),
+          contains('Log a trip'),
+          reason: 'mileage should stay available in $cat',
+        );
+      }
     });
   });
 }

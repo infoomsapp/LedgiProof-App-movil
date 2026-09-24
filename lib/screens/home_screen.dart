@@ -4,6 +4,7 @@ import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
 import 'timer_screen.dart';
+import 'trip_tracker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Workspace workspace;
@@ -74,6 +75,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 onTap: () {
                                   if (a.label == 'Log time') {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: widget.workspace)));
+                                    return;
+                                  }
+                                  if (a.label == 'Log a trip') {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: widget.workspace)));
                                     return;
                                   }
                                   showCaptureSheet(context, workspace: widget.workspace);

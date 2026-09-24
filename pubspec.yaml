@@ -24,6 +24,11 @@ dependencies:
   # --- Local, per-device only (remembered tab, draft state) ---
   shared_preferences: ^2.5.4
 
+  # --- GPS for the basic in-app trip tracker (foreground only -- unlike
+  # controlmiles' geolocator + flutter_background_service pairing, no
+  # background service here on purpose, see trip_tracker_screen.dart) ---
+  geolocator: ^13.0.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

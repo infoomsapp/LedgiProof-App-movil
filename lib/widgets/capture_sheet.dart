@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../screens/timer_screen.dart';
+import '../screens/trip_tracker_screen.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 
@@ -57,6 +58,10 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                   Navigator.pop(ctx);
                   if (a.label == 'Log time') {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: workspace)));
+                    return;
+                  }
+                  if (a.label == 'Log a trip') {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: workspace)));
                     return;
                   }
                   ScaffoldMessenger.of(context).showSnackBar(

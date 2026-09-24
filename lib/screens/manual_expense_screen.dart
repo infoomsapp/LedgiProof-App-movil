@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/manual_transaction_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 
 /// Mirrors src/components/transactions/NewTransactionDialog.tsx field-for-
 /// field: Type (Expense/Income), Amount, Description, Date -- no vendor or
@@ -63,7 +64,10 @@ class _ManualExpenseScreenState extends State<ManualExpenseScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = "Could not save the transaction. Check you're an active member of this workspace.";
+        // Was a fixed string regardless of cause, which hid every real
+        // failure behind the same guess about membership. friendlyError
+        // still redacts anything database-shaped.
+        _error = friendlyError(e, 'Could not save the transaction.');
         _saving = false;
       });
     }

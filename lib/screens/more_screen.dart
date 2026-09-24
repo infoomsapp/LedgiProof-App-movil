@@ -7,6 +7,7 @@ import 'add_accountant_screen.dart';
 import 'chat_inbox_screen.dart';
 import 'checklists_screen.dart';
 import 'connections_screen.dart';
+import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'timer_screen.dart';
 
@@ -76,6 +77,16 @@ class MoreScreen extends StatelessWidget {
             onTap: () =>
                 _open(context, ConnectionsScreen(workspace: workspace)),
           ),
+          // A client of a firm reads their books through the portal, where the
+          // firm decides what is published; org-level reports are the firm's
+          // own view, so this row belongs to staff.
+          if (!workspace.isPortalClient)
+            _MoreRow(
+              icon: Icons.insights_outlined,
+              label: 'Reports',
+              subtitle: 'P&L and Balance Sheet',
+              onTap: () => _open(context, ReportsScreen(workspace: workspace)),
+            ),
           _MoreRow(
             icon: Icons.settings_outlined,
             label: 'Settings',

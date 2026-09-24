@@ -28,7 +28,12 @@ class ManualTransactionService {
     });
     final data = res.data;
     if (data is Map && data['error'] != null) {
-      throw Exception(data['error'] as String);
+      // StateError, not Exception: friendlyError() deliberately degrades an
+      // unrecognised Exception to a generic message, which would throw away
+      // the one string that says WHY this failed. The edge function already
+      // ran it through safeMessage() server-side, so it is safe to show and
+      // belongs in the trusted branch.
+      throw StateError(data['error'] as String);
     }
   }
 }

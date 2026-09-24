@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/mileage_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 
 enum _TrackerStage { checkingConnection, connectedElsewhere, idle, running, choosingPurpose, saving }
 
@@ -134,7 +135,7 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
       if (!mounted) return;
       setState(() => _stage = _TrackerStage.choosingPurpose);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Could not save the trip. Check you're an owner, admin, or accountant on this workspace.")),
+        SnackBar(content: Text(friendlyError(e, 'Could not save the trip.'))),
       );
     }
   }

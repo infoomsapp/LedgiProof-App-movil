@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/time_entry_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 
 class TimerScreen extends StatefulWidget {
   final Workspace workspace;
@@ -70,7 +71,7 @@ class _TimerScreenState extends State<TimerScreen> {
       });
       _startTicking(entry.startedAt!);
     } catch (e) {
-      _showError('Could not start the timer.');
+      _showError(friendlyError(e, 'Could not start the timer.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -93,7 +94,7 @@ class _TimerScreenState extends State<TimerScreen> {
         SnackBar(content: Text('Saved · ${stopped.durationMinutes} min')),
       );
     } catch (e) {
-      _showError('Could not stop the timer.');
+      _showError(friendlyError(e, 'Could not stop the timer.'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

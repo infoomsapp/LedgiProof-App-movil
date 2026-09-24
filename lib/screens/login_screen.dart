@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/app_theme.dart';
 import '../widgets/lp_logo.dart';
+import 'accept_invite_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -107,6 +108,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Text('Sign in'),
+              ),
+              const SizedBox(height: 16),
+              // Real gap fixed 2026-09-24: the app had no way at all to
+              // redeem a client-portal invite from the phone -- a client
+              // who received one on their email had to go find a computer.
+              Center(
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AcceptInviteScreen()),
+                  ),
+                  child: const Text('Have an invitation? Accept it here'),
+                ),
               ),
             ],
           ),

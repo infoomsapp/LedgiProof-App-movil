@@ -270,7 +270,7 @@ class _Group extends StatelessWidget {
                                     isActive ? FontWeight.w700 : FontWeight.w500,
                                 color: AppColors.ink)),
                         const SizedBox(height: 2),
-                        Text(o.role,
+                        Text(o.roleLabel,
                             style: TextStyle(
                                 fontSize: 12, color: AppColors.inkSubtle)),
                       ],

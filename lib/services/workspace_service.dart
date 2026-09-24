@@ -46,6 +46,25 @@ class Workspace {
   final String? portalClientId;
   final String? portalMembershipId;
 
+  /// Human label for [role]. Real gap fixed 2026-09-24: a portal-client
+  /// workspace's role (client_owner/client_contact/client_viewer) was shown
+  /// as the raw snake_case string everywhere in this app -- nowhere told the
+  /// user which of the three they actually had. Labels match the web's own
+  /// CLIENT_PORTAL_ROLE_CONFIG exactly (src/services/client-portal.service.ts)
+  /// so the two products describe the same role the same way.
+  String get roleLabel => switch (role) {
+        'client_owner' => 'Owner',
+        'client_contact' => 'Contact',
+        'client_viewer' => 'Viewer',
+        'owner' => 'Owner',
+        'admin' => 'Admin',
+        'accountant' => 'Accountant',
+        'auditor' => 'Auditor',
+        'approver' => 'Approver',
+        'readonly' => 'Read-only',
+        _ => role,
+      };
+
   /// What identifies this workspace when remembering the user's choice.
   ///
   /// For a staff membership the org id is enough. For a client-of-a-firm it is

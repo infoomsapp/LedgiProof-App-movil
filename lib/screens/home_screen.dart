@@ -3,6 +3,7 @@ import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/capture_sheet.dart';
+import '../widgets/workspace_switcher.dart';
 import 'manual_expense_screen.dart';
 import 'receipt_capture_screen.dart';
 import 'timer_screen.dart';
@@ -10,7 +11,17 @@ import 'trip_tracker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Workspace workspace;
-  const HomeScreen({super.key, required this.workspace});
+  final WorkspaceScope scope;
+  final Future<void> Function(Workspace) onSwitch;
+  final Future<void> Function() onCreatePersonal;
+
+  const HomeScreen({
+    super.key,
+    required this.workspace,
+    required this.scope,
+    required this.onSwitch,
+    required this.onCreatePersonal,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -30,7 +41,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.workspace.orgName, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        title: WorkspaceSwitcher(
+          scope: widget.scope,
+          onSwitch: widget.onSwitch,
+          onCreatePersonal: widget.onCreatePersonal,
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {

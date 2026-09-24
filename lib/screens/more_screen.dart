@@ -36,13 +36,19 @@ class MoreScreen extends StatelessWidget {
             subtitle: 'Start or stop a time entry',
             onTap: () => _open(context, TimerScreen(workspace: workspace)),
           ),
-          _MoreRow(
-            icon: Icons.link_outlined,
-            label: 'Connections',
-            subtitle: 'Linked bank accounts',
-            onTap: () =>
-                _open(context, ConnectionsScreen(workspace: workspace)),
-          ),
+          // Bank connections belong to a set of books, and a firm workspace is
+          // not one: an accountant links THEIR OWN bank in their personal
+          // workspace, while a client's bank is linked from the client's side.
+          // Offering it in firm mode invited linking the wrong account to the
+          // wrong books, so the row is simply absent there.
+          if (workspace.category != OrgCategory.firm)
+            _MoreRow(
+              icon: Icons.link_outlined,
+              label: 'Connections',
+              subtitle: 'Linked bank accounts',
+              onTap: () =>
+                  _open(context, ConnectionsScreen(workspace: workspace)),
+            ),
           _MoreRow(
             icon: Icons.settings_outlined,
             label: 'Settings',

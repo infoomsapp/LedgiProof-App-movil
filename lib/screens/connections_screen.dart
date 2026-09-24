@@ -31,6 +31,27 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Second line of defence. More already hides the entry in firm mode; this
+    // makes the rule hold even if the screen is reached some other way, so the
+    // gate lives with the screen rather than only with the menu that opens it.
+    if (widget.workspace.category == OrgCategory.firm) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Connections',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        ),
+        body: _Message(
+          icon: Icons.account_balance_outlined,
+          title: 'Not available in firm mode.',
+          body: 'Bank accounts belong to a set of books. Switch to your '
+              'personal workspace to see your own, or open the client from the '
+              'web app to see theirs.',
+          onRetry: () => Navigator.of(context).pop(),
+          retryLabel: 'Go back',
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Connections',
@@ -182,11 +203,13 @@ class _Message extends StatelessWidget {
   final String title;
   final String body;
   final VoidCallback onRetry;
+  final String retryLabel;
   const _Message(
       {required this.icon,
       required this.title,
       required this.body,
-      required this.onRetry});
+      required this.onRetry,
+      this.retryLabel = 'Reload'});
 
   @override
   Widget build(BuildContext context) {
@@ -209,7 +232,7 @@ class _Message extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
             const SizedBox(height: 14),
-            TextButton(onPressed: onRetry, child: const Text('Reload')),
+            TextButton(onPressed: onRetry, child: Text(retryLabel)),
           ],
         ),
       ),

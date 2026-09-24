@@ -75,18 +75,86 @@ class _WorkspaceLoader extends StatefulWidget {
 }
 
 class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
-  late Future<Workspace?> _workspace;
+  final _service = WorkspaceService();
+  late Future<WorkspaceScope?> _scope;
 
   @override
   void initState() {
     super.initState();
-    _workspace = WorkspaceService().loadActiveWorkspace();
+    _scope = _service.loadScope();
+  }
+
+  /// Switching workspace rebuilds the whole shell, which is what we want: the
+  /// screens below hold their own futures keyed on orgId, so anything short of
+  /// a rebuild would leave one tab showing the previous workspace's data.
+  Future<void> _switchTo(Workspace target) async {
+    await _service.rememberOrg(target.orgId);
+    if (!mounted) return;
+    setState(() => _scope = _service.loadScope());
+  }
+
+  /// Mirrors the web's CreatePersonalOrgDialog: creating the accountant's own
+  /// workspace is a deliberate, confirmed action rather than something that
+  /// happens silently the first time the Personal side is tapped.
+  Future<void> _createPersonal() async {
+    final email = Supabase.instance.client.auth.currentUser?.email ?? '';
+    final suggested =
+        email.contains('@') ? '${email.split('@').first} (Personal)' : 'Personal';
+    final controller = TextEditingController(text: suggested);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Create your personal workspace',
+            style: TextStyle(fontSize: 16, color: AppColors.ink)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This is where you track your own books, kept separate from your '
+              'firm and from your clients.',
+              style: TextStyle(fontSize: 13, color: AppColors.inkMuted),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              style: TextStyle(color: AppColors.ink),
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Create')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final orgId = await _service.createPersonalOrg(controller.text.trim());
+      await _service.rememberOrg(orgId);
+      if (!mounted) return;
+      setState(() => _scope = _service.loadScope());
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not create your personal workspace.')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Workspace?>(
-      future: _workspace,
+    return FutureBuilder<WorkspaceScope?>(
+      future: _scope,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -113,7 +181,12 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
             ),
           );
         }
-        return AppShell(workspace: snap.data!);
+        return AppShell(
+          workspace: snap.data!.active,
+          scope: snap.data!,
+          onSwitch: _switchTo,
+          onCreatePersonal: _createPersonal,
+        );
       },
     );
   }

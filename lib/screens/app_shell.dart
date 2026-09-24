@@ -11,7 +11,21 @@ import 'work_screen.dart';
 /// sheet, not a page -- index 2 is a no-op tap target) / Work / More.
 class AppShell extends StatefulWidget {
   final Workspace workspace;
-  const AppShell({super.key, required this.workspace});
+
+  /// Every workspace the user can reach, plus whether the Firm/Personal switch
+  /// applies to them at all. Only Home renders the switch; the other tabs just
+  /// follow whichever workspace is active.
+  final WorkspaceScope scope;
+  final Future<void> Function(Workspace) onSwitch;
+  final Future<void> Function() onCreatePersonal;
+
+  const AppShell({
+    super.key,
+    required this.workspace,
+    required this.scope,
+    required this.onSwitch,
+    required this.onCreatePersonal,
+  });
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -23,7 +37,12 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(workspace: widget.workspace),
+      HomeScreen(
+        workspace: widget.workspace,
+        scope: widget.scope,
+        onSwitch: widget.onSwitch,
+        onCreatePersonal: widget.onCreatePersonal,
+      ),
       ReviewScreen(workspace: widget.workspace),
       const SizedBox.shrink(), // Capture has no page -- handled in onTap below
       WorkScreen(workspace: widget.workspace),

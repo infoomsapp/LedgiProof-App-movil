@@ -19,10 +19,14 @@ class InvoiceComposeScreen extends StatefulWidget {
   /// firm workspace, where the first step is choosing who it is for.
   final ClientSummary? client;
 
-  /// Set to edit an existing DRAFT instead of composing a new invoice. The
-  /// client cannot be changed once an invoice exists -- moving a document
-  /// between clients is a different operation from correcting its contents,
-  /// and the web does not offer it either.
+  /// Set to edit an existing DRAFT instead of composing a new invoice.
+  ///
+  /// The client IS changeable here: snapshot_bill_to only freezes the client's
+  /// billing details once the invoice stops being a draft, so a draft carries
+  /// no snapshot for a reassignment to contradict. An earlier pass hid this
+  /// field on the reasoning that moving a document between clients is not a
+  /// correction -- true for an issued invoice, which cannot be edited at all,
+  /// and wrong for a draft, where the wrong client is simply a mis-tap.
   final InvoiceDetail? editing;
 
   const InvoiceComposeScreen({
@@ -55,6 +59,12 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
 
     final editing = widget.editing;
     if (editing != null) {
+      // Stand-in so the row can show who it is for before any picker is
+      // opened; replaced wholesale if the user picks somebody else.
+      _client = ClientSummary.fromRow({
+        'id': editing.clientId,
+        'display_name': editing.clientName ?? 'Client',
+      });
       if (editing.dueDate != null) _dueDate = editing.dueDate!;
       _notesCtrl.text = editing.notes ?? '';
       if (editing.items.isNotEmpty) {
@@ -80,8 +90,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
 
   // When editing, the client is fixed and already on the invoice, so it is
   // not part of what makes the form valid.
-  bool get _canSave =>
-      (widget.isEditing || _client != null) && _items.any((i) => i.isUsable);
+  bool get _canSave => _client != null && _items.any((i) => i.isUsable);
 
   Future<void> _pickClient() async {
     try {
@@ -155,6 +164,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
           orgId: widget.workspace.orgId,
           dueDate: dueDate,
           items: _items,
+          clientId: _client!.id,
           notes: notes,
         );
       } else {
@@ -216,17 +226,14 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Not shown while editing: the invoice already belongs to someone.
-          if (!widget.isEditing) ...[
-            _Row(
-              icon: Icons.person_outline,
-              label: 'Client',
-              value: _client?.displayName ?? 'Choose a client',
-              muted: _client == null,
-              onTap: _busy ? null : _pickClient,
-            ),
-            const SizedBox(height: 10),
-          ],
+          _Row(
+            icon: Icons.person_outline,
+            label: 'Client',
+            value: _client?.displayName ?? 'Choose a client',
+            muted: _client == null,
+            onTap: _busy ? null : _pickClient,
+          ),
+          const SizedBox(height: 10),
           _Row(
             icon: Icons.event_outlined,
             label: 'Due',

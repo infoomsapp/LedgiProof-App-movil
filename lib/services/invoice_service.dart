@@ -32,6 +32,8 @@ class InvoiceDetail {
   final DateTime? issueDate;
   final String? notes;
   final String? publicToken;
+  final String clientId;
+  final String? clientName;
   final List<InvoiceItem> items;
 
   InvoiceDetail({
@@ -45,6 +47,8 @@ class InvoiceDetail {
     required this.issueDate,
     required this.notes,
     required this.publicToken,
+    required this.clientId,
+    required this.clientName,
     required this.items,
   });
 
@@ -153,11 +157,18 @@ class InvoiceService {
   /// received would change a document they are holding; the status check here
   /// is a courtesy on top of that rule, not the enforcement -- a locked
   /// accounting period is refused by the database's own trigger either way.
+  ///
+  /// [clientId] may be changed while it is still a draft. `snapshot_bill_to`
+  /// only freezes the client's billing details once the status leaves 'draft',
+  /// so until then there is no snapshot for a reassignment to contradict --
+  /// picking the wrong client on a draft is a typing mistake, not an
+  /// accounting event.
   Future<void> updateDraft({
     required String invoiceId,
     required String orgId,
     required String dueDate,
     required List<DraftItem> items,
+    String? clientId,
     String? notes,
   }) async {
     final current = await _db
@@ -172,6 +183,7 @@ class InvoiceService {
     await _db.from('invoices').update({
       'due_date': dueDate,
       'notes': notes,
+      'client_id': ?clientId,
     }).eq('id', invoiceId);
 
     await _db.from('invoice_items').delete().eq('invoice_id', invoiceId);
@@ -231,7 +243,8 @@ class InvoiceService {
     final inv = await _db
         .from('invoices')
         .select('id, invoice_number, status, total, balance_due, currency, '
-            'due_date, issue_date, notes, public_token')
+            'due_date, issue_date, notes, public_token, client_id, '
+            'clients(display_name, company_name)')
         .eq('id', invoiceId)
         .single();
 
@@ -256,6 +269,11 @@ class InvoiceService {
           : DateTime.tryParse(inv['issue_date'] as String),
       notes: inv['notes'] as String?,
       publicToken: inv['public_token'] as String?,
+      clientId: inv['client_id'] as String,
+      clientName: inv['clients'] == null
+          ? null
+          : ((inv['clients'] as Map)['company_name'] as String?) ??
+              ((inv['clients'] as Map)['display_name'] as String?),
       items: (items as List)
           .map((r) => InvoiceItem.fromRow(Map<String, dynamic>.from(r as Map)))
           .toList(),

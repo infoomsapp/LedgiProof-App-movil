@@ -161,7 +161,8 @@ class _ConversationRow extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this conversation?'),
         content: const Text(
-          'This removes it from your inbox for good — it will not delete the client.',
+          'This permanently erases the message history for both sides — it '
+          'cannot be undone, and it will not delete the client.',
         ),
         actions: [
           TextButton(

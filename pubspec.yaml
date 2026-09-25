@@ -44,6 +44,7 @@ dependencies:
   # written inside delete_workspace_conversation() before it deletes
   # anything) -- this is the client-side "grab it yourself" option on top.
   share_plus: ^10.1.4
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:

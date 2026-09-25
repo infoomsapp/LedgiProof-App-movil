@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/invoice_pdf_service.dart';
 import '../services/invoice_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
@@ -36,6 +37,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   final _service = InvoiceService();
   late Future<InvoiceDetail> _future;
   bool _paying = false;
+  bool _makingPdf = false;
 
   @override
   void initState() {
@@ -171,6 +173,27 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     _snack('Link copied.');
   }
 
+  /// Builds the invoice as a PDF on the phone and opens the share sheet, so it
+  /// can go by WhatsApp or email, be saved to Files, or be printed. Anyone who
+  /// can open the invoice can do this; a draft prints with a DRAFT stamp.
+  Future<void> _sharePdf(InvoiceDetail inv) async {
+    if (_makingPdf) return;
+    setState(() => _makingPdf = true);
+    try {
+      final bytes = await InvoicePdfService().build(inv);
+      final name = invoicePdfFileName(inv.invoiceNumber);
+      await Share.shareXFiles(
+        [XFile.fromData(bytes, mimeType: 'application/pdf', name: name)],
+        fileNameOverrides: [name],
+        subject: 'Invoice ${inv.invoiceNumber}',
+      );
+    } catch (e) {
+      _snack('Could not create the PDF: ${friendlyError(e)}');
+    } finally {
+      if (mounted) setState(() => _makingPdf = false);
+    }
+  }
+
   Future<void> _duplicate(InvoiceDetail inv) async {
     setState(() => _paying = true);
     try {
@@ -250,6 +273,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       appBar: AppBar(
         title: const Text('Invoice',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        actions: [
+          FutureBuilder<InvoiceDetail>(
+            future: _future,
+            builder: (context, snap) {
+              final inv = snap.data;
+              if (inv == null) return const SizedBox.shrink();
+              if (_makingPdf) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                );
+              }
+              return IconButton(
+                tooltip: 'Share as PDF',
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                onPressed: () => _sharePdf(inv),
+              );
+            },
+          ),
+        ],
       ),
       body: FutureBuilder<InvoiceDetail>(
         future: _future,

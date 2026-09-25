@@ -37,6 +37,13 @@ dependencies:
   # images stay in-app (see documents_screen.dart), matching the same
   # PDF-external/image-in-app split the web side just adopted.
   url_launcher: ^6.3.1
+  # --- "Export chat" (chat_thread_screen.dart): hands a plain-text
+  # transcript to the OS share sheet, same idea as WhatsApp's own "Export
+  # chat" feature and the web's matching download button. The server keeps
+  # its own permanent copy regardless (workspace_conversation_archives,
+  # written inside delete_workspace_conversation() before it deletes
+  # anything) -- this is the client-side "grab it yourself" option on top.
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

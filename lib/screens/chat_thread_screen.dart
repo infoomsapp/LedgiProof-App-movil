@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/document_service.dart';
@@ -125,7 +126,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
             column: 'conversation_id',
             value: convId,
           ),
-          callback: (_) { if (mounted) _reload(); },
+          callback: (_) {
+            if (mounted) _reload();
+          },
         )
         .subscribe();
   }
@@ -152,8 +155,47 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
   // realtime-triggered reload must never silently mark-read (see above) --
   // only a genuine user action (sending a message opens the thread just as
   // surely as tapping into it) passes true explicitly.
-  void _reload({bool markAsRead = false}) =>
-      setState(() { _future = _load(markAsRead: markAsRead); });
+  void _reload({bool markAsRead = false}) => setState(() {
+    _future = _load(markAsRead: markAsRead);
+  });
+
+  // "Export chat" -- same idea as WhatsApp's own feature of that name, and
+  // the web app's matching download button. Hands a plain-text transcript
+  // to the OS share sheet (save to Files, AirDrop, email it to yourself,
+  // whatever the device offers). Independent of the permanent server-side
+  // copy delete_workspace_conversation() always writes before it deletes
+  // anything -- this is the client-side "grab it yourself" option on top,
+  // available any time, not just right before a delete.
+  Future<void> _exportChat() async {
+    final res = await _future;
+    if (res.messages.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No messages to export yet.')),
+        );
+      }
+      return;
+    }
+    final buffer = StringBuffer()
+      ..writeln('LedgiProof chat export — ${widget.clientName}')
+      ..writeln('Exported ${DateTime.now().toLocal()}')
+      ..writeln();
+    for (final m in res.messages) {
+      if (m.isDeleted) continue;
+      final who =
+          m.senderName ??
+          (m.senderRole == MessageSenderRole.bookkeeper ? 'Firm' : 'Client');
+      final body = (m.body ?? '').trim().isNotEmpty
+          ? m.body!
+          : (m.documentId != null ? '[attachment]' : '');
+      buffer.writeln('[${m.createdAt.toLocal()}] $who: $body');
+    }
+    if (!mounted) return;
+    await Share.share(
+      buffer.toString(),
+      subject: 'LedgiProof chat — ${widget.clientName}',
+    );
+  }
 
   Future<void> _deleteMessage(String messageId) async {
     final confirmed = await showDialog<bool>(
@@ -163,8 +205,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
         content: const Text('This cannot be undone.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text('Delete', style: TextStyle(color: AppColors.red)),
@@ -198,13 +241,25 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.photo_camera_outlined, color: AppColors.primary),
-              title: Text('Take a photo', style: TextStyle(color: AppColors.ink)),
+              leading: Icon(
+                Icons.photo_camera_outlined,
+                color: AppColors.primary,
+              ),
+              title: Text(
+                'Take a photo',
+                style: TextStyle(color: AppColors.ink),
+              ),
               onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
             ),
             ListTile(
-              leading: Icon(Icons.photo_library_outlined, color: AppColors.primary),
-              title: Text('Choose from gallery', style: TextStyle(color: AppColors.ink)),
+              leading: Icon(
+                Icons.photo_library_outlined,
+                color: AppColors.primary,
+              ),
+              title: Text(
+                'Choose from gallery',
+                style: TextStyle(color: AppColors.ink),
+              ),
               onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
             ),
           ],
@@ -213,7 +268,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
     );
     if (source == null) return;
 
-    final picked = await ImagePicker().pickImage(source: source, imageQuality: 85);
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 85,
+    );
     if (picked == null || !mounted) return;
 
     setState(() => _sending = true);
@@ -277,7 +335,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
         tag: _tag,
       );
       _warnIfUrgentInflation(res);
-      _tag = MessageTag.normal;   // one message, one tag: never sticky
+      _tag = MessageTag.normal; // one message, one tag: never sticky
       // First message in a brand-new thread: keep the id the server just
       // created so history loads from here on.
       _conversationId ??= res['conversation_id'] as String?;
@@ -299,8 +357,17 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.clientName,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        title: Text(
+          widget.clientName,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+        actions: [
+          IconButton(
+            onPressed: _exportChat,
+            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: 'Export chat',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -313,8 +380,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                 }
                 if (snap.hasError) {
                   return Center(
-                    child: Text('Could not load messages.',
-                        style: TextStyle(color: AppColors.inkMuted)),
+                    child: Text(
+                      'Could not load messages.',
+                      style: TextStyle(color: AppColors.inkMuted),
+                    ),
                   );
                 }
                 final messages = snap.data?.messages ?? [];
@@ -325,7 +394,10 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                       child: Text(
                         'No messages yet. Say hello.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.inkMuted),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.inkMuted,
+                        ),
                       ),
                     ),
                   );
@@ -338,7 +410,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                     // Server returns oldest-first; render newest-first without
                     // re-sorting by just walking the list backwards.
                     final m = messages[messages.length - 1 - i];
-                    final isMine = m.senderId != null && m.senderId == _myUserId;
+                    final isMine =
+                        m.senderId != null && m.senderId == _myUserId;
                     // Staff can moderate any message in their org's
                     // conversations (matches the server-side RPC check
                     // exactly); a portal client can only delete their own.
@@ -346,7 +419,9 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                     // Same viewer/other split as the web's readReceiptIcon():
                     // staff sees whether the client has read it, and vice
                     // versa.
-                    final readByOther = canModerate ? m.readByClient : m.readByBookkeeper;
+                    final readByOther = canModerate
+                        ? m.readByClient
+                        : m.readByBookkeeper;
                     return _MessageBubble(
                       message: m,
                       isMine: isMine,
@@ -360,12 +435,13 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
             ),
           ),
           _Composer(
-              controller: _controller,
-              sending: _sending,
-              onSend: _send,
-              onAttach: _attach,
-              tag: _tag,
-              onTagChanged: (t) => setState(() => _tag = t)),
+            controller: _controller,
+            sending: _sending,
+            onSend: _send,
+            onAttach: _attach,
+            tag: _tag,
+            onTagChanged: (t) => setState(() => _tag = t),
+          ),
         ],
       ),
     );
@@ -407,68 +483,85 @@ class _MessageBubble extends StatelessWidget {
           if (!isMine && message.senderName != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 3, left: 4),
-              child: Text(message.senderName!,
-                  style: TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
+              child: Text(
+                message.senderName!,
+                style: TextStyle(fontSize: 11, color: AppColors.inkSubtle),
+              ),
             ),
           GestureDetector(
             onLongPress: canDelete ? onDelete : null,
             child: Container(
-            constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75),
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-            decoration: BoxDecoration(
-              color: bg,
-              border: Border.all(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              decoration: BoxDecoration(
+                color: bg,
+                border: Border.all(
                   color: tagged
                       ? tc.ink
                       : (isMine ? Colors.transparent : AppColors.border),
-                  width: tagged ? 1.2 : 1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: message.isDeleted
-                ? Text(
-                    'This message was deleted',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic,
-                      color: isMine ? Colors.white70 : AppColors.inkMuted,
+                  width: tagged ? 1.2 : 1,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: message.isDeleted
+                  ? Text(
+                      'This message was deleted',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                        color: isMine ? Colors.white70 : AppColors.inkMuted,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (tagged) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                tagIcon(message.tag),
+                                size: 13,
+                                color: tc.ink,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                tagLabel(message.tag).toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: tc.ink,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                        if (message.documentId != null)
+                          _AttachmentChip(
+                            documentId: message.documentId!,
+                            onDark: isMine,
+                          ),
+                        // A message can be an attachment with no text at all, so the
+                        // body only takes space when there is one.
+                        if ((message.body ?? '').trim().isNotEmpty) ...[
+                          if (message.documentId != null)
+                            const SizedBox(height: 7),
+                          Text(
+                            message.body!,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: fg,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  )
-                : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (tagged) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(tagIcon(message.tag), size: 13, color: tc.ink),
-                      const SizedBox(width: 5),
-                      Text(tagLabel(message.tag).toUpperCase(),
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                              color: tc.ink)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                ],
-                if (message.documentId != null)
-                  _AttachmentChip(
-                      documentId: message.documentId!, onDark: isMine),
-                // A message can be an attachment with no text at all, so the
-                // body only takes space when there is one.
-                if ((message.body ?? '').trim().isNotEmpty) ...[
-                  if (message.documentId != null) const SizedBox(height: 7),
-                  Text(
-                    message.body!,
-                    style:
-                        TextStyle(fontSize: 13.5, color: fg, height: 1.35),
-                  ),
-                ],
-              ],
-            ),
             ),
           ),
           Padding(
@@ -513,13 +606,14 @@ class _Composer extends StatelessWidget {
   final VoidCallback onAttach;
   final MessageTag tag;
   final ValueChanged<MessageTag> onTagChanged;
-  const _Composer(
-      {required this.controller,
-      required this.sending,
-      required this.onSend,
-      required this.onAttach,
-      required this.tag,
-      required this.onTagChanged});
+  const _Composer({
+    required this.controller,
+    required this.sending,
+    required this.onSend,
+    required this.onAttach,
+    required this.tag,
+    required this.onTagChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -534,65 +628,71 @@ class _Composer extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-        // Three buttons, not four: blue is what a message already is, so there
-        // is nothing to press for it. Each one toggles, so the same tap takes
-        // it back off.
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: Row(
-            children: [
-              for (final t in [
-                MessageTag.pending,
-                MessageTag.invoice,
-                MessageTag.urgent
-              ]) ...[
-                _TagButton(
-                  tag: t,
-                  selected: tag == t,
-                  onTap: sending
-                      ? null
-                      : () => onTagChanged(tag == t ? MessageTag.normal : t),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ],
-          ),
-        ),
-        Row(
-          children: [
-            IconButton(
-              onPressed: sending ? null : onAttach,
-              icon: Icon(Icons.attach_file, color: AppColors.inkMuted),
-              tooltip: 'Attach a photo',
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 4,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  hintText: 'Message…',
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                ),
-                onSubmitted: (_) => onSend(),
+            // Three buttons, not four: blue is what a message already is, so there
+            // is nothing to press for it. Each one toggles, so the same tap takes
+            // it back off.
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  for (final t in [
+                    MessageTag.pending,
+                    MessageTag.invoice,
+                    MessageTag.urgent,
+                  ]) ...[
+                    _TagButton(
+                      tag: t,
+                      selected: tag == t,
+                      onTap: sending
+                          ? null
+                          : () =>
+                                onTagChanged(tag == t ? MessageTag.normal : t),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: sending ? null : onSend,
-              icon: sending
-                  ? SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.primary),
-                    )
-                  : Icon(Icons.send, color: AppColors.primary),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: sending ? null : onAttach,
+                  icon: Icon(Icons.attach_file, color: AppColors.inkMuted),
+                  tooltip: 'Attach a photo',
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    minLines: 1,
+                    maxLines: 4,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      hintText: 'Message…',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                    ),
+                    onSubmitted: (_) => onSend(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: sending ? null : onSend,
+                  icon: sending
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : Icon(Icons.send, color: AppColors.primary),
+                ),
+              ],
             ),
-          ],
-        ),
           ],
         ),
       ),
@@ -604,8 +704,11 @@ class _TagButton extends StatelessWidget {
   final MessageTag tag;
   final bool selected;
   final VoidCallback? onTap;
-  const _TagButton(
-      {required this.tag, required this.selected, required this.onTap});
+  const _TagButton({
+    required this.tag,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -621,15 +724,19 @@ class _TagButton extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 7),
             decoration: BoxDecoration(
               border: Border.all(
-                  color: selected ? c.ink : AppColors.border,
-                  width: selected ? 1.2 : 1),
+                color: selected ? c.ink : AppColors.border,
+                width: selected ? 1.2 : 1,
+              ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(tagIcon(tag),
-                    size: 14, color: selected ? c.ink : AppColors.inkSubtle),
+                Icon(
+                  tagIcon(tag),
+                  size: 14,
+                  color: selected ? c.ink : AppColors.inkSubtle,
+                ),
                 const SizedBox(width: 5),
                 Flexible(
                   child: Text(
@@ -673,14 +780,19 @@ class _AttachmentChipState extends State<_AttachmentChip> {
       final doc = await _docs.getSignedUrl(widget.documentId);
       if (!mounted) return;
       if (doc.mimeType.startsWith('image/')) {
-        await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _ChatImageViewer(url: doc.url, filename: doc.filename),
-        ));
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                _ChatImageViewer(url: doc.url, filename: doc.filename),
+          ),
+        );
       } else {
         // PDFs and anything else hand off to the system viewer, the same
         // split documents_screen.dart already uses.
-        await launchUrl(Uri.parse(doc.url),
-            mode: LaunchMode.externalApplication);
+        await launchUrl(
+          Uri.parse(doc.url),
+          mode: LaunchMode.externalApplication,
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -718,9 +830,14 @@ class _AttachmentChipState extends State<_AttachmentChip> {
             else
               Icon(Icons.attach_file, size: 15, color: fg),
             const SizedBox(width: 8),
-            Text('Attachment',
-                style: TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w600, color: fg)),
+            Text(
+              'Attachment',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: fg,
+              ),
+            ),
           ],
         ),
       ),
@@ -740,15 +857,21 @@ class _ChatImageViewer extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(filename,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14)),
+        title: Text(
+          filename,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 14),
+        ),
       ),
       body: Center(
         child: InteractiveViewer(
-          child: Image.network(url,
-              errorBuilder: (_, _, _) => const Text('Could not load the image',
-                  style: TextStyle(color: Colors.white70))),
+          child: Image.network(
+            url,
+            errorBuilder: (_, _, _) => const Text(
+              'Could not load the image',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
         ),
       ),
     );

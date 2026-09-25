@@ -34,62 +34,108 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     // setState() asserts at runtime that its callback returns void. A block
     // body with no explicit `return` is void regardless of what the last
     // statement evaluates to.
-    setState(() { _inbox = _service.getInbox(widget.workspace.orgId); });
+    setState(() {
+      _inbox = _service.getInbox(widget.workspace.orgId);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chat',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-      ),
-      body: FutureBuilder<WorkspaceInboxResponse>(
-        future: _inbox,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return _Empty(
-              icon: Icons.error_outline,
-              title: 'Could not load chat.',
-              body: 'Check your connection and pull to retry.',
-              onRetry: _reload,
-            );
-          }
+    return FutureBuilder<WorkspaceInboxResponse>(
+      future: _inbox,
+      builder: (context, snap) {
+        // A portal client's relationship with their firm is never really "no
+        // conversation" -- it's one accountant, always reachable, even right
+        // after the firm deletes the thread from their own inbox (soft-
+        // delete: workspace_conversations.deleted_at, which
+        // get_workspace_inbox filters out for everyone, staff and client
+        // alike). Real bug found live: that made the accountant's contact
+        // vanish from the client's app with no way back in, since this
+        // screen was the only chat entry point and it dead-ended on a static
+        // "no conversations" message once the inbox came back empty. The web
+        // side never had this problem -- its floating bubble hands
+        // WorkspaceChatPanel the client's own clientId directly
+        // (GlobalChatBubble.tsx) and skips the inbox list entirely for a
+        // portal viewer, so a composer is always reachable regardless of
+        // what the inbox query returns. Mirrored here: a portal client whose
+        // inbox has loaded (successfully or not -- either way there is
+        // nothing useful to list) goes straight to the thread with their
+        // accountant instead of through this screen's own Scaffold/AppBar.
+        // conversationId is deliberately null when the inbox has no row for
+        // it -- ChatThreadScreen already handles that (the same path a firm
+        // member gets opening a brand-new client): the first message sent
+        // calls send_workspace_message, which is get-or-create and
+        // resurrects the deleted row (with its full prior history) rather
+        // than losing it.
+        if (widget.workspace.isPortalClient &&
+            snap.connectionState == ConnectionState.done &&
+            !snap.hasError) {
           final conversations = snap.data?.conversations ?? [];
-          if (conversations.isEmpty) {
-            return _Empty(
-              icon: Icons.chat_bubble_outline,
-              leadingWidget: const LpChatBrandIcon(size: 34),
-              title: 'No conversations yet.',
-              body: widget.workspace.isPortalClient
-                  ? 'Messages from your accountant will show up here.'
-                  : 'Message a client and it will show up here.',
-              onRetry: _reload,
-            );
-          }
-          final isStaff = snap.data?.role == 'bookkeeper';
-          return RefreshIndicator(
-            onRefresh: () async => _reload(),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: conversations.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _ConversationRow(
-                workspace: widget.workspace,
-                conversation: conversations[i],
-                // Delete is staff-only, matching the web's own menu (a
-                // conversation is deleted from the FIRM's inbox declutter
-                // need, never something a client does to their own copy).
-                canDelete: isStaff,
-                onOpened: _reload,
-                onDeleted: _reload,
-              ),
-            ),
+          return ChatThreadScreen(
+            workspace: widget.workspace,
+            conversationId: conversations.isEmpty
+                ? null
+                : conversations.first.id,
+            clientId: widget.workspace.portalClientId!,
+            clientName: widget.workspace.firmName ?? widget.workspace.orgName,
           );
-        },
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'Chat',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ),
+          body: _buildInboxBody(context, snap),
+        );
+      },
+    );
+  }
+
+  Widget _buildInboxBody(
+    BuildContext context,
+    AsyncSnapshot<WorkspaceInboxResponse> snap,
+  ) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (snap.hasError) {
+      return _Empty(
+        icon: Icons.error_outline,
+        title: 'Could not load chat.',
+        body: 'Check your connection and pull to retry.',
+        onRetry: _reload,
+      );
+    }
+    final conversations = snap.data?.conversations ?? [];
+    if (conversations.isEmpty) {
+      return _Empty(
+        icon: Icons.chat_bubble_outline,
+        leadingWidget: const LpChatBrandIcon(size: 34),
+        title: 'No conversations yet.',
+        body: 'Message a client and it will show up here.',
+        onRetry: _reload,
+      );
+    }
+    final isStaff = snap.data?.role == 'bookkeeper';
+    return RefreshIndicator(
+      onRefresh: () async => _reload(),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: conversations.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, i) => _ConversationRow(
+          workspace: widget.workspace,
+          conversation: conversations[i],
+          // Delete is staff-only, matching the web's own menu (a
+          // conversation is deleted from the FIRM's inbox declutter
+          // need, never something a client does to their own copy).
+          canDelete: isStaff,
+          onOpened: _reload,
+          onDeleted: _reload,
+        ),
       ),
     );
   }
@@ -115,11 +161,13 @@ class _ConversationRow extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this conversation?'),
         content: const Text(
-            'This removes it from your inbox for good — it will not delete the client.'),
+          'This removes it from your inbox for good — it will not delete the client.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text('Delete', style: TextStyle(color: AppColors.red)),
@@ -160,19 +208,21 @@ class _ConversationRow extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: () async {
-        await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ChatThreadScreen(
-            workspace: workspace,
-            conversationId: conversation.id,
-            clientId: conversation.clientId,
-            // A portal client talking to their firm sees the firm's name,
-            // not their own business name back at themselves -- staff still
-            // sees the actual client's name, same as before.
-            clientName: workspace.isPortalClient
-                ? (workspace.firmName ?? workspace.orgName)
-                : conversation.clientName,
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ChatThreadScreen(
+              workspace: workspace,
+              conversationId: conversation.id,
+              clientId: conversation.clientId,
+              // A portal client talking to their firm sees the firm's name,
+              // not their own business name back at themselves -- staff still
+              // sees the actual client's name, same as before.
+              clientName: workspace.isPortalClient
+                  ? (workspace.firmName ?? workspace.orgName)
+                  : conversation.clientName,
+            ),
           ),
-        ));
+        );
         onOpened();
       },
       child: Container(
@@ -224,7 +274,10 @@ class _ConversationRow extends StatelessWidget {
                 child: Text(
                   '${conversation.myUnreadCount}',
                   style: const TextStyle(
-                      fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
+                    fontSize: 11,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
           ],
@@ -240,12 +293,13 @@ class _Empty extends StatelessWidget {
   final String title;
   final String body;
   final VoidCallback onRetry;
-  const _Empty(
-      {required this.icon,
-      required this.title,
-      required this.body,
-      required this.onRetry,
-      this.leadingWidget});
+  const _Empty({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.onRetry,
+    this.leadingWidget,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -257,13 +311,21 @@ class _Empty extends StatelessWidget {
           children: [
             leadingWidget ?? Icon(icon, size: 30, color: AppColors.inkSubtle),
             const SizedBox(height: 12),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.ink,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(body,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
+            ),
             const SizedBox(height: 14),
             TextButton(onPressed: onRetry, child: const Text('Reload')),
           ],

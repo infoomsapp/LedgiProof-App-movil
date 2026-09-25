@@ -30,12 +30,16 @@ class MoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(12),
         children: [
-          _MoreRow(
-            icon: Icons.checklist_outlined,
-            label: 'Checklists',
-            subtitle: 'Open runs and their items',
-            onTap: () => _open(context, ChecklistsScreen(workspace: workspace)),
-          ),
+          // Checklists are the firm's own work: a client of a firm is not a
+          // member of the organization, so the database shows them nothing and
+          // the row would only lead to an empty screen.
+          if (!workspace.isPortalClient)
+            _MoreRow(
+              icon: Icons.checklist_outlined,
+              label: 'Checklists',
+              subtitle: 'Create, work through and schedule',
+              onTap: () => _open(context, ChecklistsScreen(workspace: workspace)),
+            ),
           _MoreRow(
             icon: Icons.schedule_outlined,
             label: 'Time',

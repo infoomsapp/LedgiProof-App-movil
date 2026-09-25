@@ -6,12 +6,13 @@ import '../screens/chat_inbox_screen.dart';
 import '../services/workspace_chat_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/chat_ring.dart';
 import 'lp_chat_brand_icon.dart';
 
 /// A draggable floating chat bubble, always on top of [child], mirroring the
-/// web's GlobalChatBubble.tsx: same semaphore priority rule (grey = nothing
-/// waiting, blue = only internal/other-side unread, amber = 1-2 clients
-/// waiting, red = 3+ clients waiting), same unread badge. Only ever shown for
+/// web's GlobalChatBubble.tsx: same ring rule (see utils/chat_ring.dart: grey
+/// = nothing unread, blue = normal, green = invoice, amber = outstanding,
+/// red = needs a reply), same unread badge. Only ever shown for
 /// a workspace that actually has chat -- a personal ("started") workspace has
 /// no client relationship for chat to scope to, so the bubble stays absent
 /// there rather than opening onto an empty inbox.
@@ -123,31 +124,37 @@ class _ChatBubbleOverlayState extends State<ChatBubbleOverlay> {
     _channel = db
         .channel('workspace-chat-bubble-${widget.workspace.orgId}')
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          // All events, not just inserts: a message being READ (here or on
+          // another device) must clear the ring too, not wait for the 60 s poll.
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'workspace_messages',
+          callback: (_) => _refreshInbox(),
+        )
+        // A team-channel message changes the badge, which rides on the inbox
+        // response. RLS only lets a firm's own members receive these.
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'workspace_team_messages',
           callback: (_) => _refreshInbox(),
         )
         .subscribe();
   }
 
   _Semaphore _semaphore() {
-    final convs = _inbox?.conversations ?? [];
-    final clientUnread = convs.where(
-      (c) => c.myUnreadCount > 0 && c.lastMessageSenderRole == MessageSenderRole.client,
+    final r = chatRing(
+      _inbox?.conversations ?? const [],
+      teamUnread: _inbox?.teamUnread ?? 0,
     );
-    if (clientUnread.isEmpty) {
-      final anyUnread = convs.any((c) => c.myUnreadCount > 0);
-      if (!anyUnread) return _Semaphore(AppColors.border, 'No unread messages');
-      return _Semaphore(AppColors.primary, 'Internal notes pending');
-    }
-    if (clientUnread.length >= 3) {
-      return _Semaphore(AppColors.red, '${clientUnread.length} clients waiting');
-    }
-    return _Semaphore(
-      AppColors.amber,
-      '${clientUnread.length} client${clientUnread.length > 1 ? 's' : ''} waiting',
-    );
+    final color = switch (r.tag) {
+      null => AppColors.border,
+      MessageTag.urgent => AppColors.red,
+      MessageTag.pending => AppColors.amber,
+      MessageTag.invoice => AppColors.green,
+      MessageTag.normal => AppColors.primary,
+    };
+    return _Semaphore(color, r.label);
   }
 
   @override
@@ -231,7 +238,10 @@ class _ChatBubbleOverlayState extends State<ChatBubbleOverlay> {
                 ));
                 _refreshInbox();
               },
-              child: _Bubble(unread: _inbox?.unreadTotal ?? 0, semaphore: _semaphore()),
+              child: _Bubble(
+                unread: (_inbox?.unreadTotal ?? 0) + (_inbox?.teamUnread ?? 0),
+                semaphore: _semaphore(),
+              ),
             ),
           ),
         ],

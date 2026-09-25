@@ -10,9 +10,11 @@ import '../services/document_service.dart';
 import '../services/workspace_chat_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/chat_merge.dart';
 import '../utils/errors.dart';
 import '../widgets/audited_status_check.dart';
 import '../widgets/message_tag_style.dart';
+import '../widgets/team_button.dart';
 
 /// One conversation's messages, plus a text field to reply. Works for both
 /// a firm member (sender_role bookkeeper) and a portal client (sender_role
@@ -52,10 +54,22 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
   late Future<WorkspaceMessagesResponse> _future;
   bool _sending = false;
 
+  // What is on screen. Kept apart from _future's result so a reload never
+  // blanks the thread: the list is only replaced when fresh data arrives, and
+  // a failed reload leaves the last good list visible. _all also holds any
+  // older pages the user loaded, which a reload of the latest page must keep.
+  List<WorkspaceMessage> _all = const [];
+  bool _hasMore = false;
+  String? _oldestAt;
+  bool _loadedOnce = false;
+  bool _loadingOlder = false;
+  int _loadSeq = 0; // newest load wins when several are in flight
+
   String? get _myUserId => Supabase.instance.client.auth.currentUser?.id;
 
   String? _conversationId;
   RealtimeChannel? _channel;
+  bool _subscribedBefore = false;
 
   @override
   void initState() {
@@ -89,19 +103,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
   // it. Mark-read must follow genuine presence: opening the screen (above)
   // or the app coming back to THIS screen in the foreground (below) --
   // never a passive background refresh.
+  //
+  // On resume the thread is RELOADED first and only then marked read (both
+  // happen inside _load). Marking without reloading was its own bug: iOS
+  // suspends the realtime socket in the background, so messages that arrived
+  // meanwhile were never fetched yet the sender saw them as "read".
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
-        mounted &&
-        (ModalRoute.of(context)?.isCurrent ?? false)) {
-      _markReadNow();
+    if (state == AppLifecycleState.resumed && mounted && _isInFront) {
+      _reload(markAsRead: true);
     }
   }
 
-  void _markReadNow() {
-    final id = _conversationId;
-    if (id == null) return;
-    unawaited(_service.markRead(id).catchError((_) {}));
+  /// True only while this thread is what the person is looking at: the app is
+  /// in the foreground AND no other route (another screen, a dialog, a sheet)
+  /// is on top of it. A null lifecycle state means the first frame has not
+  /// settled yet, which is foreground.
+  bool get _isInFront {
+    final life = WidgetsBinding.instance.lifecycleState;
+    final foreground = life == null || life == AppLifecycleState.resumed;
+    return foreground && mounted && (ModalRoute.of(context)?.isCurrent ?? false);
   }
 
   // UPDATE specifically catches the read-receipt flip -- without it, the
@@ -126,27 +147,104 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
             column: 'conversation_id',
             value: convId,
           ),
-          callback: (_) {
-            if (mounted) _reload();
+          callback: (payload) {
+            if (!mounted) return;
+            // A new message from the other side, arriving while this screen
+            // is genuinely in front of the person: it is read the moment it
+            // shows, exactly as when the thread was opened. Everything else
+            // (background, another screen or dialog on top, our own message,
+            // a read-receipt UPDATE) stays a passive reload that marks
+            // nothing -- see the note on didChangeAppLifecycleState.
+            final incoming = payload.eventType == PostgresChangeEvent.insert &&
+                payload.newRecord['sender_id'] != _myUserId;
+            _reload(markAsRead: incoming && _isInFront);
           },
         )
-        .subscribe();
+        .subscribe((status, _) {
+          if (status != RealtimeSubscribeStatus.subscribed) return;
+          // First "subscribed" is the initial connect (data was just loaded).
+          // A later one is a reconnect, and events may have been lost in the
+          // gap, so catch up. Passive: does not mark anything read.
+          if (_subscribedBefore && mounted) _reload();
+          _subscribedBefore = true;
+        });
   }
 
   Future<WorkspaceMessagesResponse> _load({bool markAsRead = false}) async {
-    final id = _conversationId;
-    // Nothing written yet: show an empty thread rather than asking the RPC
-    // for a conversation that does not exist (it raises 'conversation not
-    // found', which would read as an error to the user for a perfectly
-    // ordinary "first message to this client").
+    final seq = ++_loadSeq;
+    var id = _conversationId;
+    // Opened from a client rather than from the inbox: the id is not known,
+    // but the conversation may well exist. Look it up so its history shows
+    // (and live updates start) instead of a false "No messages yet".
     if (id == null) {
-      return WorkspaceMessagesResponse.fromJson(const {'messages': []});
+      id = await _service.findConversationId(
+        widget.workspace.orgId,
+        widget.clientId,
+      );
+      if (id != null && mounted) {
+        _conversationId = id;
+        _subscribeRealtime();
+      }
+    }
+    // Still nothing: a genuinely new conversation. Show an empty thread
+    // rather than asking the RPC for one that does not exist (it raises
+    // 'conversation not found', which would read as an error to the user for
+    // a perfectly ordinary "first message to this client").
+    if (id == null) {
+      final empty = WorkspaceMessagesResponse.fromJson(const {'messages': []});
+      if (seq == _loadSeq) _applyPage(empty);
+      return empty;
     }
     final res = await _service.getMessages(id);
+    // A newer load started while this one was in flight: its result is the
+    // one to show, so this one must not overwrite it.
+    if (seq == _loadSeq) _applyPage(res);
     if (markAsRead) {
       unawaited(_service.markRead(id).catchError((_) {}));
     }
     return res;
+  }
+
+  /// Folds the latest page into what is on screen (see chat_merge.dart).
+  void _applyPage(WorkspaceMessagesResponse res) {
+    final merged = mergeLatestPage<WorkspaceMessage>(
+      _all,
+      res.messages,
+      res.hasMore,
+      (m) => m.id,
+    );
+    _all = merged.messages;
+    if (!merged.keptOlder) {
+      _hasMore = res.hasMore;
+      _oldestAt = res.oldestAt;
+    }
+    _loadedOnce = true;
+  }
+
+  Future<void> _loadOlder() async {
+    final id = _conversationId;
+    final before = _oldestAt;
+    if (id == null || before == null || _loadingOlder || !_hasMore) return;
+    setState(() => _loadingOlder = true);
+    try {
+      final res = await _service.getMessages(id, before: before);
+      if (!mounted) return;
+      final have = _all.map((m) => m.id).toSet();
+      setState(() {
+        _all = [...res.messages.where((m) => !have.contains(m.id)), ..._all];
+        _hasMore = res.hasMore;
+        _oldestAt = res.oldestAt ?? _oldestAt;
+        _loadingOlder = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingOlder = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not load older messages: ${friendlyError(e)}'),
+        ),
+      );
+    }
   }
 
   // A block body, not `=> _future = _load()` -- see the matching note in
@@ -167,8 +265,12 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
   // anything -- this is the client-side "grab it yourself" option on top,
   // available any time, not just right before a delete.
   Future<void> _exportChat() async {
-    final res = await _future;
-    if (res.messages.isEmpty) {
+    try {
+      await _future;
+    } catch (_) {
+      // A failed reload still leaves the last good list in _all to export.
+    }
+    if (_all.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No messages to export yet.')),
@@ -180,7 +282,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
       ..writeln('LedgiProof chat export — ${widget.clientName}')
       ..writeln('Exported ${DateTime.now().toLocal()}')
       ..writeln();
-    for (final m in res.messages) {
+    for (final m in _all) {
       if (m.isDeleted) continue;
       final who =
           m.senderName ??
@@ -197,12 +299,54 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
     );
   }
 
+  Future<void> _deleteMySide() async {
+    final id = _conversationId;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this conversation on your side?'),
+        content: const Text(
+          'Your accountant keeps their own copy, and it comes back if a new '
+          'message arrives.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete', style: TextStyle(color: AppColors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteConversation(id);
+      // Nothing of it is left on this side: drop what is on screen, then
+      // reload (which shows the empty thread, ready for a new message).
+      setState(() {
+        _all = const [];
+        _hasMore = false;
+        _oldestAt = null;
+      });
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete: ${friendlyError(e)}')),
+      );
+    }
+  }
+
   Future<void> _deleteMessage(String messageId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this message?'),
-        content: const Text('This cannot be undone.'),
+        title: const Text('Delete this message for you?'),
+        content: const Text('The other side keeps their copy.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -362,6 +506,18 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
         actions: [
+          // Team stays one tap away while a client conversation is open, with
+          // its unread badge; firm members only.
+          if (workspaceHasTeamChat(widget.workspace))
+            TeamButton(workspace: widget.workspace),
+          // A portal client has no inbox list to swipe in, so their own
+          // "delete my side" lives here. It clears only their copy.
+          if (widget.workspace.isPortalClient && _conversationId != null)
+            IconButton(
+              onPressed: _deleteMySide,
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete conversation',
+            ),
           IconButton(
             onPressed: _exportChat,
             icon: const Icon(Icons.ios_share_outlined),
@@ -375,18 +531,33 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
             child: FutureBuilder<WorkspaceMessagesResponse>(
               future: _future,
               builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
+                // The spinner and the error state are for the very first load
+                // only. After that a reload (realtime event, resume, send)
+                // keeps the list on screen -- swapping it for a spinner made
+                // the whole thread flash and lose its scroll position on
+                // every event -- and a failed reload keeps the last good list.
+                if (!_loadedOnce &&
+                    snap.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (snap.hasError) {
+                if (!_loadedOnce && snap.hasError) {
                   return Center(
-                    child: Text(
-                      'Could not load messages.',
-                      style: TextStyle(color: AppColors.inkMuted),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Could not load messages.',
+                          style: TextStyle(color: AppColors.inkMuted),
+                        ),
+                        TextButton(
+                          onPressed: _reload,
+                          child: const Text('Try again'),
+                        ),
+                      ],
                     ),
                   );
                 }
-                final messages = snap.data?.messages ?? [];
+                final messages = _all;
                 if (messages.isEmpty) {
                   return Center(
                     child: Padding(
@@ -405,16 +576,26 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                 return ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(12),
-                  itemCount: messages.length,
+                  itemCount: messages.length + (_hasMore ? 1 : 0),
                   itemBuilder: (context, i) {
+                    // The list is reversed, so the item after the oldest
+                    // message sits at the very top of the screen.
+                    if (i == messages.length) {
+                      return Center(
+                        child: TextButton(
+                          onPressed: _loadingOlder ? null : _loadOlder,
+                          child: Text(
+                            _loadingOlder ? 'Loading…' : 'Load older messages',
+                          ),
+                        ),
+                      );
+                    }
                     // Server returns oldest-first; render newest-first without
                     // re-sorting by just walking the list backwards.
                     final m = messages[messages.length - 1 - i];
                     final isMine =
                         m.senderId != null && m.senderId == _myUserId;
-                    // Staff can moderate any message in their org's
-                    // conversations (matches the server-side RPC check
-                    // exactly); a portal client can only delete their own.
+                    // Which side is looking: staff or the client's portal.
                     final canModerate = !widget.workspace.isPortalClient;
                     // Same viewer/other split as the web's readReceiptIcon():
                     // staff sees whether the client has read it, and vice
@@ -425,7 +606,11 @@ class _ChatThreadScreenState extends State<ChatThreadScreen>
                     return _MessageBubble(
                       message: m,
                       isMine: isMine,
-                      canDelete: !m.isDeleted && (isMine || canModerate),
+                      // "Delete for me": either side can hide any message it
+                      // can see from its own side (the server still limits
+                      // which ones a firm member without owner/admin rights
+                      // can hide).
+                      canDelete: !m.isDeleted,
                       onDelete: () => _deleteMessage(m.id),
                       readByOther: readByOther,
                     );

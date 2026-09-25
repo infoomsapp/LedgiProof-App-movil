@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../services/workspace_chat_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 import '../widgets/lp_chat_brand_icon.dart';
+import '../widgets/team_button.dart';
 import 'chat_thread_screen.dart';
 
 /// The conversation list. For a firm workspace this is one row per client
@@ -22,10 +24,27 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
   final _service = WorkspaceChatService();
   late Future<WorkspaceInboxResponse> _inbox;
 
+  // Last inbox that loaded successfully. A reload (pull to refresh, coming
+  // back from a thread) keeps showing it instead of swapping the whole list
+  // for a spinner, and a failed reload leaves it on screen.
+  WorkspaceInboxResponse? _last;
+
+  // Conversations the user just swiped away. Hidden immediately (a Dismissible
+  // must leave the tree in the same frame it is dismissed) and forgotten once
+  // the next inbox load confirms they are gone.
+  final Set<String> _deleted = {};
+
   @override
   void initState() {
     super.initState();
-    _inbox = _service.getInbox(widget.workspace.orgId);
+    _inbox = _fetch();
+  }
+
+  Future<WorkspaceInboxResponse> _fetch() async {
+    final res = await _service.getInbox(widget.workspace.orgId);
+    _last = res;
+    _deleted.removeWhere((id) => !res.conversations.any((c) => c.id == id));
+    return res;
   }
 
   void _reload() {
@@ -35,8 +54,13 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     // body with no explicit `return` is void regardless of what the last
     // statement evaluates to.
     setState(() {
-      _inbox = _service.getInbox(widget.workspace.orgId);
+      _inbox = _fetch();
     });
+  }
+
+  void _onConversationDeleted(String id) {
+    setState(() => _deleted.add(id));
+    _reload();
   }
 
   @override
@@ -87,6 +111,11 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               'Chat',
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
+            // Team sits right next to the inbox title; firm members only.
+            actions: [
+              if (workspaceHasTeamChat(widget.workspace))
+                TeamButton(workspace: widget.workspace),
+            ],
           ),
           body: _buildInboxBody(context, snap),
         );
@@ -98,10 +127,12 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
     BuildContext context,
     AsyncSnapshot<WorkspaceInboxResponse> snap,
   ) {
-    if (snap.connectionState == ConnectionState.waiting) {
+    final data = snap.data ?? _last;
+    // Spinner / error only while there is nothing to show yet.
+    if (data == null && snap.connectionState == ConnectionState.waiting) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (snap.hasError) {
+    if (data == null && snap.hasError) {
       return _Empty(
         icon: Icons.error_outline,
         title: 'Could not load chat.',
@@ -109,7 +140,9 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         onRetry: _reload,
       );
     }
-    final conversations = snap.data?.conversations ?? [];
+    final conversations = (data?.conversations ?? [])
+        .where((c) => !_deleted.contains(c.id))
+        .toList();
     if (conversations.isEmpty) {
       return _Empty(
         icon: Icons.chat_bubble_outline,
@@ -119,7 +152,6 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         onRetry: _reload,
       );
     }
-    final isStaff = snap.data?.role == 'bookkeeper';
     return RefreshIndicator(
       onRefresh: () async => _reload(),
       child: ListView.separated(
@@ -129,12 +161,13 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
         itemBuilder: (context, i) => _ConversationRow(
           workspace: widget.workspace,
           conversation: conversations[i],
-          // Delete is staff-only, matching the web's own menu (a
-          // conversation is deleted from the FIRM's inbox declutter
-          // need, never something a client does to their own copy).
-          canDelete: isStaff,
+          // Clears only the firm's OWN side; the client keeps their copy.
+          // The server limits it to owner/admin and the swipe springs back
+          // with the reason otherwise. (A portal client never sees this list:
+          // they go straight to their thread, which has its own delete.)
+          canDelete: true,
           onOpened: _reload,
-          onDeleted: _reload,
+          onDeleted: () => _onConversationDeleted(conversations[i].id),
         ),
       ),
     );
@@ -159,10 +192,10 @@ class _ConversationRow extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this conversation?'),
+        title: const Text('Delete this conversation on your side?'),
         content: const Text(
-          'This permanently erases the message history for both sides — it '
-          'cannot be undone, and it will not delete the client.',
+          'The other side keeps their own copy, and it comes back if a new '
+          'message arrives. This will not delete the client.',
         ),
         actions: [
           TextButton(
@@ -186,11 +219,24 @@ class _ConversationRow extends StatelessWidget {
     return Dismissible(
       key: ValueKey(conversation.id),
       direction: DismissDirection.endToStart,
-      confirmDismiss: (_) => _confirmDelete(context),
-      onDismissed: (_) async {
-        await WorkspaceChatService().deleteConversation(conversation.id);
-        onDeleted();
+      // The delete happens here, before the row is allowed to leave: if the
+      // server refuses (or the network drops) the row springs back and says
+      // why, instead of vanishing while the conversation still exists.
+      confirmDismiss: (_) async {
+        if (!await _confirmDelete(context)) return false;
+        try {
+          await WorkspaceChatService().deleteConversation(conversation.id);
+          return true;
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not delete: ${friendlyError(e)}')),
+            );
+          }
+          return false;
+        }
       },
+      onDismissed: (_) => onDeleted(),
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.symmetric(horizontal: 18),

@@ -58,6 +58,11 @@ class WorkspaceConversation {
   final bool isArchived;
   final int myUnreadCount;
 
+  /// Most important tag among the messages the viewer has not read (urgent >
+  /// pending > invoice > normal); null when there are none, or when the
+  /// server predates the field.
+  final MessageTag? myUnreadTag;
+
   WorkspaceConversation.fromRow(Map<String, dynamic> r)
       : id = r['id'] as String,
         orgId = r['org_id'] as String,
@@ -72,19 +77,26 @@ class WorkspaceConversation {
             ? null
             : _senderRoleFrom(r['last_message_sender_role'] as String?),
         isArchived = (r['is_archived'] as bool?) ?? false,
-        myUnreadCount = (r['my_unread_count'] as num?)?.toInt() ?? 0;
+        myUnreadCount = (r['my_unread_count'] as num?)?.toInt() ?? 0,
+        myUnreadTag = r['my_unread_tag'] == null
+            ? null
+            : _messageTagFrom(r['my_unread_tag'] as String?);
 }
 
 class WorkspaceInboxResponse {
   final String role; // 'bookkeeper' | 'client'
   final int total;
   final int unreadTotal;
+
+  /// Unread messages in the firm's team channel (0 for clients / non-firm).
+  final int teamUnread;
   final List<WorkspaceConversation> conversations;
 
   WorkspaceInboxResponse.fromJson(Map<String, dynamic> j)
       : role = (j['role'] as String?) ?? 'client',
         total = (j['total'] as num?)?.toInt() ?? 0,
         unreadTotal = (j['unread_total'] as num?)?.toInt() ?? 0,
+        teamUnread = (j['team_unread'] as num?)?.toInt() ?? 0,
         conversations = ((j['conversations'] as List?) ?? [])
             .map((r) => WorkspaceConversation.fromRow(Map<String, dynamic>.from(r as Map)))
             .toList();
@@ -131,10 +143,15 @@ class WorkspaceMessage {
 
 class WorkspaceMessagesResponse {
   final bool hasMore;
+
+  /// created_at of the oldest message in this page, exactly as the server
+  /// sent it -- passed back verbatim as `before` to fetch the page before it.
+  final String? oldestAt;
   final List<WorkspaceMessage> messages;
 
   WorkspaceMessagesResponse.fromJson(Map<String, dynamic> j)
       : hasMore = (j['has_more'] as bool?) ?? false,
+        oldestAt = j['oldest_at'] as String?,
         messages = ((j['messages'] as List?) ?? [])
             .map((r) => WorkspaceMessage.fromRow(Map<String, dynamic>.from(r as Map)))
             .toList();
@@ -162,6 +179,22 @@ class WorkspaceChatService {
     if (before != null) params['p_before'] = before;
     final data = await _db.rpc('get_workspace_messages', params: params);
     return WorkspaceMessagesResponse.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  /// The live (not deleted) conversation between this workspace and [clientId],
+  /// or null when nobody has written yet. workspace_conversations is unique per
+  /// (org_id, client_id) and readable by firm members and the client's portal
+  /// users alike, so no RPC is needed. Used when a thread is opened from a
+  /// client rather than from the inbox, where the id is not already known.
+  Future<String?> findConversationId(String orgId, String clientId) async {
+    final row = await _db
+        .from('workspace_conversations')
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('client_id', clientId)
+        .isFilter('deleted_at', null)
+        .maybeSingle();
+    return row?['id'] as String?;
   }
 
   /// p_context_ref is always passed (as null here) -- the DB has two RPC

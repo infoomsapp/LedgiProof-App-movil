@@ -101,6 +101,23 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
   Future<void> _stop() async {
     _clock?.cancel();
     await _positionSub?.cancel();
+    // Real bug found live: mileage_entries has a CHECK (miles > 0), but
+    // _confirmPurpose() rounds to 1 decimal before saving -- a genuinely
+    // short trip (under ~0.05 mi, e.g. Start tapped then Stop almost
+    // immediately, or GPS never got the 8m distanceFilter to fire at all)
+    // rounds down to exactly 0.0, which always fails that constraint. That
+    // surfaced as a raw, unhelpful "that value isn't allowed for this
+    // field" instead of ever explaining what actually happened. Caught here,
+    // before the purpose picker even shows, since a 0.0 mi trip has nothing
+    // to categorize either.
+    if (double.parse(_miles.toStringAsFixed(1)) <= 0) {
+      _reset();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip too short to log — not saved.')),
+      );
+      return;
+    }
     setState(() => _stage = _TrackerStage.choosingPurpose);
   }
 
@@ -118,12 +135,26 @@ class _TripTrackerScreenState extends State<TripTrackerScreen> {
       return;
     }
 
+    // Defense-in-depth: _stop() already screens this out before the purpose
+    // picker even shows, but guard here too in case this is ever reached by
+    // another path -- the DB's own CHECK (miles > 0) should never be the
+    // first place a 0.0 mi trip gets caught.
+    final roundedMiles = double.parse(_miles.toStringAsFixed(1));
+    if (roundedMiles <= 0) {
+      _reset();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip too short to log — not saved.')),
+      );
+      return;
+    }
+
     setState(() => _stage = _TrackerStage.saving);
     try {
       await _mileage.addMileageEntry(
         orgId: widget.workspace.orgId,
         userId: _userId,
-        miles: double.parse(_miles.toStringAsFixed(1)),
+        miles: roundedMiles,
         date: DateTime.now().toIso8601String().substring(0, 10),
         // Real bug: a portal-client workspace's mileage RLS requires a
         // non-null client_id matching their own client_portal_users row --

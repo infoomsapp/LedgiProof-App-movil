@@ -31,6 +31,17 @@ class AppNotification {
 class NotificationService {
   final _db = Supabase.instance.client;
 
+  // A plain 'new_message' notification is deliberately excluded on mobile
+  // (list, count, and the realtime subscribe() filter below) -- the
+  // floating chat bubble is always on screen here and already carries its
+  // own semaphore-colored unread badge for exactly that, so duplicating it
+  // into the bell too was just noise: every message rang the bell AND lit
+  // the bubble for the same event. 'sensitive_data_flagged' and anything
+  // else still comes through -- those aren't already surfaced anywhere
+  // else. The web keeps 'new_message' as-is; it has no equivalent
+  // always-visible bubble outside the chat panel itself.
+  static const _mutedType = 'new_message';
+
   Future<List<AppNotification>> list({
     required String orgId,
     int limit = 50,
@@ -42,6 +53,7 @@ class NotificationService {
         .select('id, org_id, type, title, body, is_read, created_at')
         .eq('user_id', userId)
         .eq('org_id', orgId)
+        .neq('type', _mutedType)
         .order('created_at', ascending: false)
         .limit(limit);
     return (rows as List)
@@ -57,7 +69,8 @@ class NotificationService {
         .select('id')
         .eq('user_id', userId)
         .eq('org_id', orgId)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .neq('type', _mutedType);
     return (rows as List).length;
   }
 
@@ -108,6 +121,7 @@ class NotificationService {
       callback: (payload) {
         final row = Map<String, dynamic>.from(payload.newRecord);
         if (row['org_id'] != orgId) return;
+        if (row['type'] == _mutedType) return;
         onInsert(AppNotification.fromRow(row));
       },
     ).subscribe();

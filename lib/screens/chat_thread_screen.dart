@@ -10,6 +10,7 @@ import '../services/workspace_chat_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../widgets/audited_status_check.dart';
 import '../widgets/message_tag_style.dart';
 
 /// One conversation's messages, plus a text field to reply. Works for both
@@ -52,12 +53,40 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   String? get _myUserId => Supabase.instance.client.auth.currentUser?.id;
 
   String? _conversationId;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _conversationId = widget.conversationId;
     _future = _load();
+    _subscribeRealtime();
+  }
+
+  // UPDATE specifically catches the read-receipt flip -- without it, the
+  // check only ever appeared on this viewer's next reload (a new message,
+  // reopening the thread), never live the instant the other side actually
+  // read it, which defeats the point of a live receipt. Scoped to this
+  // conversation only (not every workspace_messages row) since a thread
+  // screen only cares about its own.
+  void _subscribeRealtime() {
+    if (_channel != null) return; // already subscribed
+    final convId = _conversationId;
+    if (convId == null) return;
+    _channel = Supabase.instance.client
+        .channel('workspace-chat-thread-$convId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'workspace_messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: convId,
+          ),
+          callback: (_) { if (mounted) _reload(); },
+        )
+        .subscribe();
   }
 
   Future<WorkspaceMessagesResponse> _load() async {
@@ -158,6 +187,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _warnIfUrgentInflation(res);
       _tag = MessageTag.normal;
       _conversationId ??= res['conversation_id'] as String?;
+      _subscribeRealtime();
       _controller.clear();
       _reload();
     } catch (e) {
@@ -205,6 +235,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       // First message in a brand-new thread: keep the id the server just
       // created so history loads from here on.
       _conversationId ??= res['conversation_id'] as String?;
+      _subscribeRealtime();
       _controller.clear();
       _reload();
     } catch (e) {
@@ -220,6 +251,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 
   @override
   void dispose() {
+    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -273,11 +305,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     // conversations (matches the server-side RPC check
                     // exactly); a portal client can only delete their own.
                     final canModerate = !widget.workspace.isPortalClient;
+                    // Same viewer/other split as the web's readReceiptIcon():
+                    // staff sees whether the client has read it, and vice
+                    // versa.
+                    final readByOther = canModerate ? m.readByClient : m.readByBookkeeper;
                     return _MessageBubble(
                       message: m,
                       isMine: isMine,
                       canDelete: !m.isDeleted && (isMine || canModerate),
                       onDelete: () => _deleteMessage(m.id),
+                      readByOther: readByOther,
                     );
                   },
                 );
@@ -302,11 +339,13 @@ class _MessageBubble extends StatelessWidget {
   final bool isMine;
   final bool canDelete;
   final VoidCallback onDelete;
+  final bool readByOther;
   const _MessageBubble({
     required this.message,
     required this.isMine,
     required this.canDelete,
     required this.onDelete,
+    required this.readByOther,
   });
 
   @override
@@ -396,9 +435,23 @@ class _MessageBubble extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
-            child: Text(
-              _formatTime(message.createdAt),
-              style: TextStyle(fontSize: 10.5, color: AppColors.inkSubtle),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message.createdAt),
+                  style: TextStyle(fontSize: 10.5, color: AppColors.inkSubtle),
+                ),
+                if (isMine && !message.isDeleted) ...[
+                  const SizedBox(width: 4),
+                  AuditedStatusCheck(
+                    state: readByOther
+                        ? MessageReceiptState.read
+                        : MessageReceiptState.sent,
+                    size: 12,
+                  ),
+                ],
+              ],
             ),
           ),
         ],

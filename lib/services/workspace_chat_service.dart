@@ -101,6 +101,8 @@ class WorkspaceMessage {
   final DateTime createdAt;
   final String? senderName;
   final bool isDeleted;
+  final bool readByBookkeeper;
+  final bool readByClient;
 
   final MessageTag tag;
 
@@ -122,6 +124,8 @@ class WorkspaceMessage {
         senderName = r['sender_name'] as String?,
         documentId = r['document_id'] as String?,
         isDeleted = (r['is_deleted'] as bool?) ?? false,
+        readByBookkeeper = (r['read_by_bookkeeper'] as bool?) ?? false,
+        readByClient = (r['read_by_client'] as bool?) ?? false,
         tag = _messageTagFrom(r['message_tag'] as String?);
 }
 

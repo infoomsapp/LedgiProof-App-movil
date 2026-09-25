@@ -41,7 +41,8 @@ class ChatThreadScreen extends StatefulWidget {
   State<ChatThreadScreen> createState() => _ChatThreadScreenState();
 }
 
-class _ChatThreadScreenState extends State<ChatThreadScreen> {
+class _ChatThreadScreenState extends State<ChatThreadScreen>
+    with WidgetsBindingObserver {
   final _service = WorkspaceChatService();
   final _docs = DocumentService();
   MessageTag _tag = MessageTag.normal;
@@ -58,9 +59,48 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _conversationId = widget.conversationId;
-    _future = _load();
+    // Genuine open -- the only place this screen marks anything read on its
+    // own initiative. Everything after this must earn a mark-read the same
+    // way: an explicit sign the person is actually looking, not just a
+    // passive DB push.
+    _future = _load(markAsRead: true);
     _subscribeRealtime();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // Real bug found live: a message sent from the web (staff) showed as read
+  // on the sender's side the instant it arrived, even though nobody had
+  // opened it on the recipient's phone. Cause: the realtime callback below
+  // called _reload(), which called the OLD _load() that unconditionally
+  // marked-read on every call -- so a screen merely left mounted in the
+  // background (app backgrounded, thread not actually being looked at)
+  // silently marked every incoming message read the moment Realtime pushed
+  // it. Mark-read must follow genuine presence: opening the screen (above)
+  // or the app coming back to THIS screen in the foreground (below) --
+  // never a passive background refresh.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        (ModalRoute.of(context)?.isCurrent ?? false)) {
+      _markReadNow();
+    }
+  }
+
+  void _markReadNow() {
+    final id = _conversationId;
+    if (id == null) return;
+    unawaited(_service.markRead(id).catchError((_) {}));
   }
 
   // UPDATE specifically catches the read-receipt flip -- without it, the
@@ -68,7 +108,8 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // reopening the thread), never live the instant the other side actually
   // read it, which defeats the point of a live receipt. Scoped to this
   // conversation only (not every workspace_messages row) since a thread
-  // screen only cares about its own.
+  // screen only cares about its own. Deliberately does NOT mark anything
+  // read -- see the note on didChangeAppLifecycleState above.
   void _subscribeRealtime() {
     if (_channel != null) return; // already subscribed
     final convId = _conversationId;
@@ -89,7 +130,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
         .subscribe();
   }
 
-  Future<WorkspaceMessagesResponse> _load() async {
+  Future<WorkspaceMessagesResponse> _load({bool markAsRead = false}) async {
     final id = _conversationId;
     // Nothing written yet: show an empty thread rather than asking the RPC
     // for a conversation that does not exist (it raises 'conversation not
@@ -99,15 +140,20 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       return WorkspaceMessagesResponse.fromJson(const {'messages': []});
     }
     final res = await _service.getMessages(id);
-    // Best-effort, matching the web: opening the thread marks it read.
-    unawaited(_service.markRead(id).catchError((_) {}));
+    if (markAsRead) {
+      unawaited(_service.markRead(id).catchError((_) {}));
+    }
     return res;
   }
 
   // A block body, not `=> _future = _load()` -- see the matching note in
   // chat_inbox_screen.dart's _reload(); same runtime "setState() callback
-  // returned a Future" assertion, same fix.
-  void _reload() => setState(() { _future = _load(); });
+  // returned a Future" assertion, same fix. markAsRead defaults false: a
+  // realtime-triggered reload must never silently mark-read (see above) --
+  // only a genuine user action (sending a message opens the thread just as
+  // surely as tapping into it) passes true explicitly.
+  void _reload({bool markAsRead = false}) =>
+      setState(() { _future = _load(markAsRead: markAsRead); });
 
   Future<void> _deleteMessage(String messageId) async {
     final confirmed = await showDialog<bool>(
@@ -129,7 +175,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     if (confirmed != true) return;
     try {
       await _service.deleteMessage(messageId);
-      _reload();
+      _reload(markAsRead: true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -189,7 +235,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _conversationId ??= res['conversation_id'] as String?;
       _subscribeRealtime();
       _controller.clear();
-      _reload();
+      _reload(markAsRead: true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -237,7 +283,7 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
       _conversationId ??= res['conversation_id'] as String?;
       _subscribeRealtime();
       _controller.clear();
-      _reload();
+      _reload(markAsRead: true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -247,14 +293,6 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
-  }
-
-  @override
-  void dispose() {
-    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override

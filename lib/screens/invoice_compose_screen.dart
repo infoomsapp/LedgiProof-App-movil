@@ -4,6 +4,7 @@ import '../services/invoice_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../utils/invoice_status.dart';
 import 'invoice_detail_screen.dart';
 
 /// Compose an invoice on the phone: pick the client, set a due date, add
@@ -48,6 +49,10 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
 
   ClientSummary? _client;
   DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
+
+  /// The payment-terms chip that produced [_dueDate]; null once the date was
+  /// picked by hand (or when editing a draft with its own date).
+  DueTerms? _terms = DueTerms.net30;
   final _items = <DraftItem>[DraftItem()];
   final _notesCtrl = TextEditingController();
   bool _busy = false;
@@ -65,7 +70,10 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
         'id': editing.clientId,
         'display_name': editing.clientName ?? 'Client',
       });
-      if (editing.dueDate != null) _dueDate = editing.dueDate!;
+      if (editing.dueDate != null) {
+        _dueDate = editing.dueDate!;
+        _terms = null; // keep the draft's own date until the user picks terms
+      }
       _notesCtrl.text = editing.notes ?? '';
       if (editing.items.isNotEmpty) {
         _items
@@ -74,6 +82,8 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
                 description: i.description,
                 quantity: i.quantity,
                 unitPrice: i.unitPrice,
+                discountPct: i.discountPct,
+                taxRate: i.taxRate,
               )));
       }
     }
@@ -142,7 +152,12 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),
     );
-    if (picked != null && mounted) setState(() => _dueDate = picked);
+    if (picked != null && mounted) {
+      setState(() {
+        _dueDate = picked;
+        _terms = null;
+      });
+    }
   }
 
   /// [send] false keeps it a draft. True marks it sent and emails the client;
@@ -239,6 +254,30 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
             label: 'Due',
             value: _dueDate.toIso8601String().substring(0, 10),
             onTap: _busy ? null : _pickDueDate,
+          ),
+          const SizedBox(height: 8),
+          // Payment terms: the one-tap due dates every invoicing app offers.
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final t in DueTerms.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(t.label),
+                      selected: _terms == t,
+                      onSelected: _busy
+                          ? null
+                          : (_) => setState(() {
+                                _terms = t;
+                                _dueDate = t.dueFrom(DateTime.now());
+                              }),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 22),
           Text('LINES',
@@ -480,6 +519,48 @@ class _ItemEditor extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Optional. Left at 0 the line keeps the database defaults, exactly
+          // as on the web when these fields are not touched.
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: item.discountPct == 0
+                      ? ''
+                      : item.discountPct.toString(),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: AppColors.ink, fontSize: 13.5),
+                  decoration: const InputDecoration(
+                      labelText: 'Discount %', isDense: true),
+                  onChanged: (v) {
+                    item.discountPct =
+                        (double.tryParse(v) ?? 0).clamp(0, 100).toDouble();
+                    onChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextFormField(
+                  initialValue:
+                      item.taxRate == 0 ? '' : item.taxRate.toString(),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: AppColors.ink, fontSize: 13.5),
+                  decoration:
+                      const InputDecoration(labelText: 'Tax %', isDense: true),
+                  onChanged: (v) {
+                    item.taxRate =
+                        (double.tryParse(v) ?? 0).clamp(0, 100).toDouble();
+                    onChanged();
+                  },
+                ),
+              ),
+              const SizedBox(width: 84),
             ],
           ),
         ],

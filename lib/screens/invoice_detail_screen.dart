@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/invoice_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../utils/invoice_status.dart';
 import 'invoice_compose_screen.dart';
+
+part 'invoice_detail_parts.dart';
 
 /// One invoice, and the button to pay it.
 ///
@@ -80,6 +85,133 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not send: ${friendlyError(e)}')),
       );
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  /// Staff on an invoice that has left draft: the actions a bookkeeper needs on
+  /// the phone (record payment, remind, share, duplicate, void).
+  bool _staffOn(InvoiceDetail inv) => _canSend && !inv.isDraft;
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _recordPayment(InvoiceDetail inv) async {
+    final result = await showModalBottomSheet<_PaymentInput>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (_) => _RecordPaymentSheet(
+        balance: inv.balanceDue,
+        currency: inv.currency,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _paying = true);
+    try {
+      await _service.recordPayment(
+        invoiceId: inv.id,
+        orgId: widget.workspace!.orgId,
+        amount: result.amount,
+        balanceDue: inv.balanceDue,
+        date: result.date,
+        method: result.method,
+        reference: result.reference,
+        notes: result.notes,
+      );
+      _snack('Payment recorded.');
+      _reload();
+    } catch (e) {
+      _snack('Could not record the payment: ${friendlyError(e)}');
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  Future<void> _remind(InvoiceDetail inv) async {
+    if (_paying) return;
+    setState(() => _paying = true);
+    try {
+      await _service.sendEmail(inv.id);
+      _snack('Reminder sent to your client.');
+      _reload();
+    } catch (e) {
+      _snack('Could not send the reminder: ${friendlyError(e)}');
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  /// Opens the system share sheet (WhatsApp, SMS, Messages, email...) with the
+  /// pay link: how Xero shares an invoice from its phone app.
+  Future<void> _shareLink(InvoiceDetail inv) async {
+    final token = inv.publicToken;
+    if (token == null) {
+      _snack('This invoice has no link yet. Send it first.');
+      return;
+    }
+    await Share.share(
+      'Invoice ${inv.invoiceNumber} — ${_money(inv.balanceDue, inv.currency)} due: '
+      '${InvoiceService.publicUrl(token)}',
+      subject: 'Invoice ${inv.invoiceNumber}',
+    );
+  }
+
+  Future<void> _copyLink(InvoiceDetail inv) async {
+    final token = inv.publicToken;
+    if (token == null) {
+      _snack('This invoice has no link yet. Send it first.');
+      return;
+    }
+    await Clipboard.setData(
+        ClipboardData(text: InvoiceService.publicUrl(token)));
+    _snack('Link copied.');
+  }
+
+  Future<void> _duplicate(InvoiceDetail inv) async {
+    setState(() => _paying = true);
+    try {
+      final id = await _service.duplicate(inv, orgId: widget.workspace!.orgId);
+      if (!mounted) return;
+      await Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) =>
+            InvoiceDetailScreen(invoiceId: id, workspace: widget.workspace),
+      ));
+    } catch (e) {
+      _snack('Could not duplicate: ${friendlyError(e)}');
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  Future<void> _void(InvoiceDetail inv) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Void invoice #${inv.invoiceNumber}?'),
+        content: const Text(
+            'It stops being payable and no longer counts as money owed. '
+            'This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text('Void', style: TextStyle(color: AppColors.red))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _paying = true);
+    try {
+      await _service.voidInvoice(inv.id);
+      _snack('Invoice voided.');
+      _reload();
+    } catch (e) {
+      _snack(friendlyError(e));
     } finally {
       if (mounted) setState(() => _paying = false);
     }
@@ -171,6 +303,62 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
+                if (inv.items.isNotEmpty) ...[
+                  _TotalsCard(inv: inv),
+                  const SizedBox(height: 18),
+                ],
+                if (inv.payments.isNotEmpty) ...[
+                  _SectionLabel('Payments'),
+                  _Card(
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < inv.payments.length; i++) ...[
+                          if (i > 0)
+                            Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: AppColors.border),
+                          _PaymentRow(
+                              payment: inv.payments[i], currency: inv.currency),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                // Sent / viewed: what QuickBooks shows when you tap an invoice.
+                // Staff only; a client does not need to see when they opened it.
+                if (_canSend && (inv.sentAt != null || inv.viewedAt != null)) ...[
+                  _SectionLabel('Activity'),
+                  _Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (inv.sentAt != null)
+                            _ActivityLine(
+                              icon: Icons.send_outlined,
+                              text: 'Sent ${_day(inv.sentAt!)}'
+                                  '${inv.sentTo == null ? '' : ' to ${inv.sentTo}'}',
+                            ),
+                          if (inv.viewedAt != null)
+                            _ActivityLine(
+                              icon: Icons.visibility_outlined,
+                              text: 'Viewed by your client ${_day(inv.viewedAt!)}',
+                            )
+                          else if (inv.sentAt != null)
+                            _ActivityLine(
+                              icon: Icons.visibility_off_outlined,
+                              text: 'Not opened yet',
+                              muted: true,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 if ((inv.notes ?? '').trim().isNotEmpty) ...[
                   _SectionLabel('Notes'),
                   _Card(
@@ -183,14 +371,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                _PayArea(
-                  inv: inv,
-                  paying: _paying,
-                  onPay: () => _pay(inv),
-                  canSend: _canSend,
-                  onSend: _send,
-                  onEdit: () => _edit(inv),
-                ),
+                if (inv.isVoid)
+                  _Note(
+                    icon: Icons.block,
+                    color: AppColors.inkMuted,
+                    text: 'This invoice is void. It cannot be paid.',
+                  )
+                else if (_staffOn(inv))
+                  _StaffActions(
+                    inv: inv,
+                    busy: _paying,
+                    onRecordPayment: () => _recordPayment(inv),
+                    onRemind: () => _remind(inv),
+                    onShare: () => _shareLink(inv),
+                    onCopy: () => _copyLink(inv),
+                    onDuplicate: () => _duplicate(inv),
+                    onVoid: () => _void(inv),
+                  )
+                else
+                  _PayArea(
+                    inv: inv,
+                    paying: _paying,
+                    onPay: () => _pay(inv),
+                    canSend: _canSend,
+                    onSend: _send,
+                    onEdit: () => _edit(inv),
+                  ),
               ],
             ),
           );
@@ -209,19 +415,25 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final overdue = !inv.isPaid &&
-        inv.dueDate != null &&
-        inv.dueDate!.isBefore(DateTime.now());
-    final statusColor = inv.isPaid
+    final standing = invoiceStanding(
+      status: inv.status,
+      total: inv.total,
+      balanceDue: inv.balanceDue,
+      dueDate: inv.dueDate,
+    );
+    final overdue = standing.bucket == InvoiceBucket.overdue;
+    final statusColor = standing.bucket == InvoiceBucket.paid
         ? AppColors.green
         : overdue
             ? AppColors.red
             : AppColors.inkMuted;
-    final statusText = inv.isPaid
-        ? 'Paid'
-        : overdue
-            ? 'Overdue'
-            : inv.status;
+    final statusText = switch (standing.bucket) {
+      InvoiceBucket.paid => 'Paid',
+      InvoiceBucket.overdue => 'Overdue',
+      InvoiceBucket.draft => 'Draft',
+      InvoiceBucket.voided => 'Void',
+      InvoiceBucket.awaiting => standing.partial ? 'Partly paid' : 'Sent',
+    };
 
     return _Card(
       child: Padding(
@@ -278,7 +490,8 @@ class _Header extends StatelessWidget {
                   const SizedBox(width: 7),
                   Text(
                     '${overdue ? 'Was due' : 'Due'} '
-                    '${inv.dueDate!.toIso8601String().substring(0, 10)}',
+                    '${inv.dueDate!.toIso8601String().substring(0, 10)}'
+                    '${standing.bucket == InvoiceBucket.awaiting || overdue ? ' · ${standing.label}' : ''}',
                     style: TextStyle(fontSize: 12.5, color: statusColor),
                   ),
                 ],

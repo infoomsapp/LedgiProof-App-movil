@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/bill_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/lp_chat_brand_icon.dart';
 import 'add_accountant_screen.dart';
+import 'bills_screen.dart';
 import 'chat_inbox_screen.dart';
 import 'checklists_screen.dart';
 import 'connections_screen.dart';
@@ -77,6 +79,19 @@ class MoreScreen extends StatelessWidget {
             onTap: () =>
                 _open(context, ConnectionsScreen(workspace: workspace)),
           ),
+          // Vendor bills belong to a firm's own staff: the vendor_bills
+          // policies want owner/admin/accountant, and a client of a firm holds
+          // no org role. Whether the plan includes bill tracking is checked
+          // when the screen opens.
+          if (workspace.isFirm &&
+              !workspace.isPortalClient &&
+              BillService.canManageBills(workspace.role))
+            _MoreRow(
+              icon: Icons.request_quote_outlined,
+              label: 'Bills',
+              subtitle: 'What you owe vendors, and when',
+              onTap: () => _open(context, BillsScreen(workspace: workspace)),
+            ),
           // A client of a firm reads their books through the portal, where the
           // firm decides what is published; org-level reports are the firm's
           // own view, so this row belongs to staff.

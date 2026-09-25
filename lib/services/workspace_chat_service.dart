@@ -100,6 +100,7 @@ class WorkspaceMessage {
   final bool aiGenerated;
   final DateTime createdAt;
   final String? senderName;
+  final bool isDeleted;
 
   final MessageTag tag;
 
@@ -120,6 +121,7 @@ class WorkspaceMessage {
             DateTime.now(),
         senderName = r['sender_name'] as String?,
         documentId = r['document_id'] as String?,
+        isDeleted = (r['is_deleted'] as bool?) ?? false,
         tag = _messageTagFrom(r['message_tag'] as String?);
 }
 
@@ -204,6 +206,27 @@ class WorkspaceChatService {
   Future<void> restore(String conversationId) async {
     await _db.rpc('restore_workspace_conversation', params: {
       'p_conversation_id': conversationId,
+    });
+  }
+
+  /// Permanent (soft-delete server-side, but gone from every list here) --
+  /// unlike archive, this doesn't come back. Mirrors the web's own
+  /// deleteWorkspaceConversation() -- same RPC, same staff-only (owner/
+  /// admin) enforcement server-side.
+  Future<void> deleteConversation(String conversationId) async {
+    await _db.rpc('delete_workspace_conversation', params: {
+      'p_conversation_id': conversationId,
+    });
+  }
+
+  /// Soft-deletes one message -- the body is masked server-side for every
+  /// viewer from then on (get_workspace_messages returns is_deleted: true
+  /// and a null body), the underlying row and its hash-chain columns are
+  /// untouched. Your own message, or staff moderating any message in their
+  /// org -- enforced server-side.
+  Future<void> deleteMessage(String messageId) async {
+    await _db.rpc('delete_workspace_message', params: {
+      'p_message_id': messageId,
     });
   }
 }

@@ -70,6 +70,7 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               onRetry: _reload,
             );
           }
+          final isStaff = snap.data?.role == 'bookkeeper';
           return RefreshIndicator(
             onRefresh: () async => _reload(),
             child: ListView.separated(
@@ -79,7 +80,12 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
               itemBuilder: (context, i) => _ConversationRow(
                 workspace: widget.workspace,
                 conversation: conversations[i],
+                // Delete is staff-only, matching the web's own menu (a
+                // conversation is deleted from the FIRM's inbox declutter
+                // need, never something a client does to their own copy).
+                canDelete: isStaff,
                 onOpened: _reload,
+                onDeleted: _reload,
               ),
             ),
           );
@@ -92,12 +98,64 @@ class _ChatInboxScreenState extends State<ChatInboxScreen> {
 class _ConversationRow extends StatelessWidget {
   final Workspace workspace;
   final WorkspaceConversation conversation;
+  final bool canDelete;
   final VoidCallback onOpened;
-  const _ConversationRow(
-      {required this.workspace, required this.conversation, required this.onOpened});
+  final VoidCallback onDeleted;
+  const _ConversationRow({
+    required this.workspace,
+    required this.conversation,
+    required this.canDelete,
+    required this.onOpened,
+    required this.onDeleted,
+  });
+
+  Future<bool> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this conversation?'),
+        content: const Text(
+            'This removes it from your inbox for good — it will not delete the client.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete', style: TextStyle(color: AppColors.red)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final row = _buildRow(context);
+    if (!canDelete) return row;
+    return Dismissible(
+      key: ValueKey(conversation.id),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => _confirmDelete(context),
+      onDismissed: (_) async {
+        await WorkspaceChatService().deleteConversation(conversation.id);
+        onDeleted();
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: AppColors.red,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      child: row,
+    );
+  }
+
+  Widget _buildRow(BuildContext context) {
     final unread = conversation.myUnreadCount > 0;
     return InkWell(
       borderRadius: BorderRadius.circular(10),

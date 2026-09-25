@@ -80,6 +80,35 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
   // returned a Future" assertion, same fix.
   void _reload() => setState(() { _future = _load(); });
 
+  Future<void> _deleteMessage(String messageId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this message?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Delete', style: TextStyle(color: AppColors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _service.deleteMessage(messageId);
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not delete: ${friendlyError(e)}')),
+      );
+    }
+  }
+
   /// Attach a photo: take one or pick from the gallery, upload it, then send
   /// it as a message. Photos only for now -- image_picker cannot browse
   /// arbitrary files, so picking a PDF stored on the phone would need a
@@ -240,7 +269,16 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
                     // re-sorting by just walking the list backwards.
                     final m = messages[messages.length - 1 - i];
                     final isMine = m.senderId != null && m.senderId == _myUserId;
-                    return _MessageBubble(message: m, isMine: isMine);
+                    // Staff can moderate any message in their org's
+                    // conversations (matches the server-side RPC check
+                    // exactly); a portal client can only delete their own.
+                    final canModerate = !widget.workspace.isPortalClient;
+                    return _MessageBubble(
+                      message: m,
+                      isMine: isMine,
+                      canDelete: !m.isDeleted && (isMine || canModerate),
+                      onDelete: () => _deleteMessage(m.id),
+                    );
                   },
                 );
               },
@@ -262,7 +300,14 @@ class _ChatThreadScreenState extends State<ChatThreadScreen> {
 class _MessageBubble extends StatelessWidget {
   final WorkspaceMessage message;
   final bool isMine;
-  const _MessageBubble({required this.message, required this.isMine});
+  final bool canDelete;
+  final VoidCallback onDelete;
+  const _MessageBubble({
+    required this.message,
+    required this.isMine,
+    required this.canDelete,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +333,9 @@ class _MessageBubble extends StatelessWidget {
               child: Text(message.senderName!,
                   style: TextStyle(fontSize: 11, color: AppColors.inkSubtle)),
             ),
-          Container(
+          GestureDetector(
+            onLongPress: canDelete ? onDelete : null,
+            child: Container(
             constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
@@ -301,7 +348,16 @@ class _MessageBubble extends StatelessWidget {
                   width: tagged ? 1.2 : 1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
+            child: message.isDeleted
+                ? Text(
+                    'This message was deleted',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: isMine ? Colors.white70 : AppColors.inkMuted,
+                    ),
+                  )
+                : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -335,6 +391,7 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ],
               ],
+            ),
             ),
           ),
           Padding(

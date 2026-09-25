@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import 'transaction_chat_screen.dart';
+import 'transactions_screen.dart';
 
 class ReviewScreen extends StatefulWidget {
   final Workspace workspace;
@@ -16,14 +20,56 @@ class _ReviewScreenState extends State<ReviewScreen> {
   final _books = BooksService();
   late Future<List<SemaphoreTx>> _queue;
 
+  // Last queue that loaded. A reload (pull, or a new bank transaction arriving)
+  // keeps showing it instead of swapping the list for a spinner.
+  List<SemaphoreTx>? _last;
+  RealtimeChannel? _channel;
+  Timer? _coalesce;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _subscribe();
+  }
+
+  @override
+  void dispose() {
+    _coalesce?.cancel();
+    if (_channel != null) Supabase.instance.client.removeChannel(_channel!);
+    super.dispose();
   }
 
   void _load() {
-    _queue = _books.getReviewQueue(widget.workspace.orgId);
+    _queue = _books.getReviewQueue(widget.workspace.orgId).then((r) {
+      _last = r;
+      return r;
+    });
+  }
+
+  /// A bank transaction that needs a look can arrive at any moment (Plaid pushes
+  /// it to the server, which saves it); the queue updates by itself. RLS decides
+  /// which events this session receives.
+  void _subscribe() {
+    _channel = Supabase.instance.client
+        .channel('review-${widget.workspace.orgId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'transactions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'org_id',
+            value: widget.workspace.orgId,
+          ),
+          callback: (_) {
+            _coalesce?.cancel();
+            _coalesce = Timer(const Duration(milliseconds: 400), () {
+              if (mounted) setState(_load);
+            });
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _approve(SemaphoreTx tx) async {
@@ -38,7 +84,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+      appBar: AppBar(
+        title: const Text('Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        actions: [
+          // Review is only what needs a decision (amber and red). Every
+          // transaction, with the full semaphore filter, is one tap away.
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => TransactionsScreen(workspace: widget.workspace),
+            )),
+            icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            label: const Text('All transactions'),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           setState(_load);
@@ -47,13 +106,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
         child: FutureBuilder<List<SemaphoreTx>>(
           future: _queue,
           builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
+            if (snap.connectionState == ConnectionState.waiting && _last == null) {
               return const Center(child: CircularProgressIndicator());
             }
-            if (snap.hasError) {
+            if (snap.hasError && _last == null) {
               return Center(child: Text('Could not load the review queue.', style: TextStyle(color: AppColors.red)));
             }
-            final items = snap.data ?? [];
+            final items = snap.data ?? _last ?? [];
             if (items.isEmpty) {
               return ListView(
                 children: [

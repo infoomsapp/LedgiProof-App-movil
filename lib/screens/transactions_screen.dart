@@ -66,6 +66,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
   bool _loading = true;
   bool _loadingMore = false;
   late String _filter = widget.initialFilter;
+  TxPeriod _period = TxPeriod.days30;
   int _limit = 50;
   int _seq = 0;
 
@@ -137,6 +138,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
         semaphore: _filter == 'all' ? null : _filter,
         search: _search.text,
         limit: _limit,
+        period: _period,
       );
       if (!mounted || seq != _seq) return;
       setState(() {
@@ -159,6 +161,15 @@ class _TransactionsScreenState extends State<TransactionsScreen>
     if (f == _filter) return;
     setState(() {
       _filter = f;
+      _limit = 50;
+    });
+    _load();
+  }
+
+  void _setPeriod(TxPeriod p) {
+    if (p == _period) return;
+    setState(() {
+      _period = p;
       _limit = 50;
     });
     _load();
@@ -231,6 +242,55 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       child: ListView(
         padding: const EdgeInsets.all(12),
         children: [
+          // ── Dashboard header: what came in, what went out, what needs a look.
+          Row(
+            children: [
+              Expanded(
+                child: _Tile(
+                  label: 'Money in',
+                  value: _money(page.totals.moneyIn, 'USD').replaceFirst('+', ''),
+                  color: AppColors.green,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Tile(
+                  label: 'Money out',
+                  value: _money(-page.totals.moneyOut, 'USD').replaceFirst('−', ''),
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _Tile(
+                  label: 'To review',
+                  value: '${page.totals.needsReview}',
+                  color: page.totals.needsReview > 0 ? AppColors.amber : AppColors.inkMuted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _ColourBar(counts: page.counts),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final p in TxPeriod.values)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(p.label),
+                      selected: _period == p,
+                      onSelected: (_) => _setPeriod(p),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           TextField(
             controller: _search,
             onChanged: _onSearch,
@@ -281,7 +341,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
               child: Center(
                 child: Text(
                   (page.counts['all'] ?? 0) == 0
-                      ? 'No transactions yet. Connect a bank account and they will appear here on their own.'
+                      ? 'No transactions in this period. Connect a bank account and they will appear here on their own.'
                       : 'Nothing matches.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.inkMuted),
@@ -299,6 +359,66 @@ class _TransactionsScreenState extends State<TransactionsScreen>
             ),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+}
+
+class _Tile extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  const _Tile({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: AppColors.inkMuted)),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+            ),
+          ],
+        ),
+      );
+}
+
+/// The four semaphore colours as one proportional bar: how the period's
+/// transactions are spread between certified, reviewed, needs-review and
+/// unusual, at a glance. Hidden while there is nothing to draw.
+class _ColourBar extends StatelessWidget {
+  final Map<String, int> counts;
+  const _ColourBar({required this.counts});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = counts['all'] ?? 0;
+    if (total == 0) return const SizedBox.shrink();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        height: 8,
+        child: Row(
+          children: [
+            for (final s in const ['blue', 'green', 'amber', 'red'])
+              if ((counts[s] ?? 0) > 0)
+                Expanded(
+                  flex: counts[s]!,
+                  child: Container(color: _semColor(s)),
+                ),
+          ],
+        ),
       ),
     );
   }

@@ -62,8 +62,20 @@ class BooksService {
 
   /// Marks a transaction reviewed -- moves it to green, the same outcome
   /// approving it in the web app produces.
+  ///
+  /// Throws when nothing was changed. Row Level Security does not raise an
+  /// error for an UPDATE the caller may not make -- it just matches zero rows --
+  /// so without this check a client (or a read-only role) swiping "approve"
+  /// would be told "Approved" while the transaction stayed exactly as it was.
   Future<void> approveTransaction(String transactionId) async {
-    await _db.from('transactions').update({'semaphore': 'green'}).eq('id', transactionId);
+    final updated = await _db
+        .from('transactions')
+        .update({'semaphore': 'green'})
+        .eq('id', transactionId)
+        .select('id');
+    if ((updated as List).isEmpty) {
+      throw StateError('Only your accountant can review this transaction.');
+    }
   }
 
   Future<List<InvoiceSummary>> getInvoices(String orgId, {int limit = 30}) async {

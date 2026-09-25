@@ -1,28 +1,40 @@
 import 'package:flutter/material.dart';
+import '../screens/bills_screen.dart';
+import '../screens/invoices_screen.dart';
 import '../screens/manual_expense_screen.dart';
 import '../screens/receipt_capture_screen.dart';
 import '../screens/timer_screen.dart';
+import '../screens/transactions_screen.dart';
 import '../screens/trip_tracker_screen.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import 'client_picker_sheet.dart';
 
-/// The center "+" tab's bottom sheet -- four equal actions, per the mobile
-/// UX design (Capture is a sheet, not a screen). Mileage tracking and
-/// receipt OCR have real backends already (mileage_connections/-webhook,
-/// ocr-receipt) but their mobile screens aren't built yet in this first
-/// shell pass -- tapping them says so honestly instead of pretending.
+/// The center "+" tab's bottom sheet -- equal action cards, per the mobile UX
+/// design (Capture is a sheet, not a screen). Mileage tracking and receipt OCR
+/// have real backends already (mileage_connections/-webhook, ocr-receipt).
+///
+/// [id] is what the Home quick-actions row saves (see utils/quick_action_prefs
+/// .dart), so an action keeps its identity even if its label is reworded.
 class CaptureAction {
+  final String id;
   final IconData icon;
   final String label;
-  const CaptureAction(this.icon, this.label);
+
+  /// One word for the small card on Home.
+  final String shortLabel;
+  const CaptureAction(this.id, this.icon, this.label, this.shortLabel);
 }
 
 const captureActions = [
-  CaptureAction(Icons.camera_alt_outlined, 'Scan receipt'),
-  CaptureAction(Icons.timer_outlined, 'Log time'),
-  CaptureAction(Icons.navigation_outlined, 'Log a trip'),
-  CaptureAction(Icons.edit_outlined, 'Manual expense'),
+  CaptureAction('scan_receipt', Icons.camera_alt_outlined, 'Scan receipt', 'Receipt'),
+  CaptureAction('log_time', Icons.timer_outlined, 'Log time', 'Time'),
+  CaptureAction('log_trip', Icons.navigation_outlined, 'Log a trip', 'Trip'),
+  CaptureAction('manual_expense', Icons.edit_outlined, 'Manual expense', 'Expense'),
+  // The Transactions dashboard: every bank and manual transaction with the
+  // semaphore filter. It is a place to look, not something to capture, but it
+  // is the first thing people reach for after capturing one.
+  CaptureAction('transactions', Icons.receipt_long_outlined, 'Transactions', 'Transactions'),
 ];
 
 /// What Capture offers in the workspace you are actually in.
@@ -34,7 +46,7 @@ const captureActions = [
 /// row read this list, and a rule written twice is a rule that drifts.
 List<CaptureAction> captureActionsFor(Workspace workspace) {
   if (workspace.category != OrgCategory.firm) return captureActions;
-  return captureActions.where((a) => a.label != 'Log a trip').toList();
+  return captureActions.where((a) => a.id != 'log_trip').toList();
 }
 
 /// In a firm workspace, a receipt has to belong to a client -- there is no
@@ -59,6 +71,34 @@ Future<void> _openReceiptCapture(BuildContext context, Workspace workspace) asyn
   Navigator.push(context, MaterialPageRoute(
     builder: (_) => ReceiptCaptureScreen(workspace: workspace, clientId: client.id, clientName: client.displayName),
   ));
+}
+
+/// Opens the screen behind an action id. The ONE place that maps an id to a
+/// screen, used by the Capture sheet and the Home quick-actions row alike: Home
+/// used to open the receipt camera directly, which skipped the client picker a
+/// firm needs.
+void openQuickAction(BuildContext context, String id, Workspace workspace) {
+  Widget? screen;
+  switch (id) {
+    case 'scan_receipt':
+      _openReceiptCapture(context, workspace);
+      return;
+    case 'log_time':
+      screen = TimerScreen(workspace: workspace);
+    case 'log_trip':
+      screen = TripTrackerScreen(workspace: workspace);
+    case 'manual_expense':
+      screen = ManualExpenseScreen(workspace: workspace);
+    case 'transactions':
+      screen = TransactionsScreen(workspace: workspace);
+    case 'invoices':
+      screen = InvoicesScreen(workspace: workspace);
+    case 'bills':
+      screen = BillsScreen(workspace: workspace);
+  }
+  if (screen == null) return;
+  final target = screen;
+  Navigator.push(context, MaterialPageRoute(builder: (_) => target));
 }
 
 void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
@@ -95,25 +135,7 @@ void showCaptureSheet(BuildContext context, {required Workspace workspace}) {
                 borderRadius: BorderRadius.circular(12),
                 onTap: () {
                   Navigator.pop(ctx);
-                  if (a.label == 'Log time') {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: workspace)));
-                    return;
-                  }
-                  if (a.label == 'Log a trip') {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: workspace)));
-                    return;
-                  }
-                  if (a.label == 'Scan receipt') {
-                    _openReceiptCapture(context, workspace);
-                    return;
-                  }
-                  if (a.label == 'Manual expense') {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => ManualExpenseScreen(workspace: workspace)));
-                    return;
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${a.label} — coming in the next build pass')),
-                  );
+                  openQuickAction(context, a.id, workspace);
                 },
                 child: Container(
                   decoration: BoxDecoration(

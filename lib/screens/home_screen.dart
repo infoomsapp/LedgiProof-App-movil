@@ -4,13 +4,9 @@ import '../services/books_service.dart';
 import '../services/notification_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/capture_sheet.dart';
+import '../widgets/quick_actions.dart';
 import '../widgets/workspace_switcher.dart';
-import 'manual_expense_screen.dart';
 import 'notifications_screen.dart';
-import 'receipt_capture_screen.dart';
-import 'timer_screen.dart';
-import 'trip_tracker_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final Workspace workspace;
@@ -122,56 +118,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                Text('QUICK ACTIONS',
-                    style: TextStyle(color: AppColors.inkSubtle, fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-                const SizedBox(height: 10),
-                Row(
-                  children: captureActionsFor(widget.workspace)
-                      .map((a) => Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 3),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: () {
-                                  if (a.label == 'Log time') {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TimerScreen(workspace: widget.workspace)));
-                                    return;
-                                  }
-                                  if (a.label == 'Log a trip') {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => TripTrackerScreen(workspace: widget.workspace)));
-                                    return;
-                                  }
-                                  if (a.label == 'Scan receipt') {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => ReceiptCaptureScreen(workspace: widget.workspace)));
-                                    return;
-                                  }
-                                  if (a.label == 'Manual expense') {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => ManualExpenseScreen(workspace: widget.workspace)));
-                                    return;
-                                  }
-                                  showCaptureSheet(context, workspace: widget.workspace);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    border: Border.all(color: AppColors.border),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(a.icon, size: 18, color: AppColors.primaryInk),
-                                      const SizedBox(height: 4),
-                                      Text(a.label.split(' ').first,
-                                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: AppColors.ink)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ))
-                      .toList(),
-                ),
+                // The cards are the person's own: Edit picks up to five and
+                // reorders them (see widgets/quick_actions.dart).
+                QuickActionsSection(workspace: widget.workspace),
                 const SizedBox(height: 20),
                 if (snap.hasError)
                   Text('Could not load your review queue.', style: TextStyle(color: AppColors.red)),

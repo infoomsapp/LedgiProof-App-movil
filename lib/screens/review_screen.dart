@@ -5,8 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/books_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 import 'transaction_chat_screen.dart';
-import 'transactions_screen.dart';
 
 class ReviewScreen extends StatefulWidget {
   final Workspace workspace;
@@ -72,8 +72,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
         .subscribe();
   }
 
+  /// Only staff whose role the transactions UPDATE policy accepts can review.
+  /// A portal client sees the same amber/red rows (they are their own
+  /// transactions) but cannot decide them, so no swipe is offered to them.
+  bool get _canApprove =>
+      !widget.workspace.isPortalClient &&
+      const {'owner', 'admin', 'accountant', 'approver'}.contains(widget.workspace.role);
+
   Future<void> _approve(SemaphoreTx tx) async {
-    await _books.approveTransaction(tx.id);
+    try {
+      await _books.approveTransaction(tx.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e))),
+      );
+      return;
+    }
     if (!mounted) return;
     setState(_load);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -84,20 +99,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        actions: [
-          // Review is only what needs a decision (amber and red). Every
-          // transaction, with the full semaphore filter, is one tap away.
-          TextButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => TransactionsScreen(workspace: widget.workspace),
-            )),
-            icon: const Icon(Icons.receipt_long_outlined, size: 18),
-            label: const Text('All transactions'),
-          ),
-        ],
-      ),
+      // Review is only what needs a decision (amber and red). The full list of
+      // transactions has its own dashboard (Capture > Transactions, or a Home
+      // quick action), so nothing about it lives here.
+      appBar: AppBar(title: const Text('Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
       body: RefreshIndicator(
         onRefresh: () async {
           setState(_load);
@@ -131,7 +136,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 final tx = items[i];
                 return Dismissible(
                   key: ValueKey(tx.id),
-                  direction: DismissDirection.endToStart,
+                  direction: _canApprove ? DismissDirection.endToStart : DismissDirection.none,
                   background: Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: 20),
@@ -164,7 +169,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
                               const SizedBox(height: 2),
                               Text(
-                                tx.semaphore == 'red' ? 'Unusual amount' : 'Needs your review',
+                                tx.semaphore == 'red'
+                                    ? 'Unusual amount'
+                                    : (_canApprove ? 'Needs your review' : 'Waiting on your accountant'),
                                 style: TextStyle(fontSize: 11, color: AppColors.inkSubtle),
                               ),
                             ],

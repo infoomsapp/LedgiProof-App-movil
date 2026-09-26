@@ -8,6 +8,7 @@ import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
 import '../utils/invoice_status.dart';
+import '../widgets/tax_snapshot_card.dart';
 import 'invoice_compose_screen.dart';
 
 part 'invoice_detail_parts.dart';
@@ -356,6 +357,13 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   _TotalsCard(inv: inv),
                   const SizedBox(height: 18),
                 ],
+                // The firm's record of how the sales tax was worked out at issue.
+                if (_canSend && !inv.isDraft)
+                  TaxSnapshotCard(
+                    invoiceId: inv.id,
+                    currentTaxTotal: inv.taxTotal,
+                    currency: inv.currency,
+                  ),
                 if (inv.payments.isNotEmpty) ...[
                   _SectionLabel('Payments'),
                   _Card(

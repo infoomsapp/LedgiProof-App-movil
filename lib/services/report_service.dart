@@ -84,6 +84,65 @@ class BalanceSheet {
       equity.accounts.isEmpty;
 }
 
+/// One account's movement and the bucket it fell into.
+class CashFlowLine {
+  final String code;
+  final String name;
+  final String bucket; // operating | investing | financing | non_cash
+  final double amount;
+
+  CashFlowLine.fromRow(Map<String, dynamic> r)
+      : code = (r['code'] as String?) ?? '',
+        name = (r['name'] as String?) ?? '',
+        bucket = (r['bucket'] as String?) ?? '',
+        amount = (r['amount'] as num?)?.toDouble() ?? 0;
+}
+
+class CashFlow {
+  final String period;
+  final double netIncome;
+  final double operating;
+  final double investing;
+  final double financing;
+  final double netChange;
+  final double cashStart;
+  final double cashEnd;
+  final double actualChange;
+  final double difference;
+
+  /// False means the account classification does not explain the money that
+  /// actually moved. Shown, never hidden: an unexplained statement is a
+  /// question, not an answer.
+  final bool reconciles;
+
+  /// Which accounts the server treated as cash, so a wrong guess is visible
+  /// and fixable instead of silent.
+  final List<String> cashAccounts;
+  final List<CashFlowLine> lines;
+
+  CashFlow.fromJson(Map<String, dynamic> j)
+      : period = (j['period'] as String?) ?? '',
+        netIncome = (j['net_income'] as num?)?.toDouble() ?? 0,
+        operating = (j['operating'] as num?)?.toDouble() ?? 0,
+        investing = (j['investing'] as num?)?.toDouble() ?? 0,
+        financing = (j['financing'] as num?)?.toDouble() ?? 0,
+        netChange = (j['net_change'] as num?)?.toDouble() ?? 0,
+        cashStart = (j['cash_start'] as num?)?.toDouble() ?? 0,
+        cashEnd = (j['cash_end'] as num?)?.toDouble() ?? 0,
+        actualChange = (j['actual_change'] as num?)?.toDouble() ?? 0,
+        difference = (j['difference'] as num?)?.toDouble() ?? 0,
+        reconciles = (j['reconciles'] as bool?) ?? false,
+        cashAccounts = ((j['cash_accounts'] as List?) ?? [])
+            .map((a) =>
+                '${(a as Map)['code'] ?? ''} ${(a)['name'] ?? ''}'.trim())
+            .toList(),
+        lines = ((j['lines'] as List?) ?? [])
+            .map((r) => CashFlowLine.fromRow(Map<String, dynamic>.from(r as Map)))
+            .toList();
+
+  bool get isEmpty => lines.isEmpty && netIncome == 0 && netChange == 0;
+}
+
 class ReportService {
   final _db = Supabase.instance.client;
 
@@ -121,5 +180,20 @@ class ReportService {
       'p_client_id': clientId,
     });
     return BalanceSheet.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<CashFlow> cashFlow({
+    required String orgId,
+    required int year,
+    required int month,
+    String? clientId,
+  }) async {
+    final data = await _db.rpc('get_cash_flow', params: {
+      'p_org_id': orgId,
+      'p_year': year,
+      'p_month': month,
+      'p_client_id': clientId,
+    });
+    return CashFlow.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

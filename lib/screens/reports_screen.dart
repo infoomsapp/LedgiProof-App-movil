@@ -22,7 +22,7 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-enum _Report { pl, balanceSheet }
+enum _Report { pl, balanceSheet, cashFlow }
 
 class _ReportsScreenState extends State<ReportsScreen> {
   final _service = ReportService();
@@ -42,11 +42,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   void _load() {
     setState(() {
-      _future = _report == _Report.pl
-          ? _service.profitAndLoss(
-              orgId: widget.workspace.orgId, year: _year, month: _month)
-          : _service.balanceSheet(
-              orgId: widget.workspace.orgId, year: _year, month: _month);
+      _future = switch (_report) {
+        _Report.pl => _service.profitAndLoss(
+            orgId: widget.workspace.orgId, year: _year, month: _month),
+        _Report.balanceSheet => _service.balanceSheet(
+            orgId: widget.workspace.orgId, year: _year, month: _month),
+        _Report.cashFlow => _service.cashFlow(
+            orgId: widget.workspace.orgId, year: _year, month: _month),
+      };
     });
   }
 
@@ -65,27 +68,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
               children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: _Toggle(
-                        label: 'P&L',
-                        selected: _report == _Report.pl,
-                        onTap: () {
-                          _report = _Report.pl;
-                          _load();
-                        },
+                    for (final (r, label) in const [
+                      (_Report.pl, 'P&L'),
+                      (_Report.balanceSheet, 'Balance'),
+                      (_Report.cashFlow, 'Cash Flow'),
+                    ]) ...[
+                      Expanded(
+                        child: _Toggle(
+                          label: label,
+                          selected: _report == r,
+                          onTap: () {
+                            _report = r;
+                            _load();
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _Toggle(
-                        label: 'Balance Sheet',
-                        selected: _report == _Report.balanceSheet,
-                        onTap: () {
-                          _report = _Report.balanceSheet;
-                          _load();
-                        },
-                      ),
-                    ),
+                      if (r != _Report.cashFlow) const SizedBox(width: 6),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -128,6 +127,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   return data.isEmpty
                       ? _noData()
                       : _BsView(data: data, currency: 'USD');
+                }
+                if (data is CashFlow) {
+                  return data.isEmpty
+                      ? _noData()
+                      : _CfView(data: data, currency: 'USD');
                 }
                 return const SizedBox.shrink();
               },
@@ -347,6 +351,98 @@ class _BsView extends StatelessWidget {
           total: data.equity.total,
           accent: AppColors.cyan,
           currency: currency,
+        ),
+      ],
+    );
+  }
+}
+
+class _CfView extends StatelessWidget {
+  final CashFlow data;
+  final String currency;
+  const _CfView({required this.data, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    final up = data.netChange >= 0;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        // The reconciliation leads, because it is the one thing that says
+        // whether the rest of this screen can be trusted.
+        if (!data.reconciles)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.amberBg,
+              border: Border.all(color: AppColors.amber),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_outlined, size: 17, color: AppColors.amber),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'This statement does not reconcile. The movements below '
+                    'explain ${_money(data.netChange, currency)} but cash actually '
+                    'moved ${_money(data.actualChange, currency)}. Usually one '
+                    'account is classified wrongly.',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        _Headline(
+          label: up ? 'Cash increased' : 'Cash decreased',
+          value: _money(data.netChange, currency),
+          color: up ? AppColors.green : AppColors.red,
+        ),
+        const SizedBox(height: 16),
+        _Group(
+          title: 'Summary',
+          rows: [
+            ('', 'Net income', data.netIncome),
+            ('', 'Operating activities', data.operating),
+            ('', 'Investing activities', data.investing),
+            ('', 'Financing activities', data.financing),
+          ],
+          total: data.netChange,
+          accent: AppColors.primary,
+          currency: currency,
+        ),
+        const SizedBox(height: 12),
+        _Group(
+          title: 'Cash position',
+          rows: [
+            ('', 'Start of period', data.cashStart),
+            ('', 'End of period', data.cashEnd),
+          ],
+          total: data.actualChange,
+          accent: AppColors.cyan,
+          currency: currency,
+        ),
+        if (data.lines.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _Group(
+            title: 'What moved',
+            rows: [
+              for (final l in data.lines) (l.code, '${l.name}  ·  ${l.bucket}', l.amount)
+            ],
+            total: data.lines.fold(0.0, (sum, l) => sum + l.amount),
+            accent: AppColors.amber,
+            currency: currency,
+          ),
+        ],
+        const SizedBox(height: 14),
+        Text(
+          data.cashAccounts.isEmpty
+              ? 'No account is marked as cash, so this statement cannot reconcile.'
+              : 'Cash accounts: ${data.cashAccounts.join(', ')}',
+          style: TextStyle(fontSize: 11.5, color: AppColors.inkSubtle),
         ),
       ],
     );

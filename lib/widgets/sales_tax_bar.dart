@@ -12,6 +12,10 @@ class SalesTaxBar extends StatelessWidget {
   final VoidCallback onApply;
   final VoidCallback onRemove;
 
+  /// Offered under the suggestion while the firm does not add sales tax by
+  /// default: one tap to turn that on, so it is never asked again.
+  final VoidCallback? onAlways;
+
   const SalesTaxBar({
     super.key,
     required this.suggestion,
@@ -19,6 +23,7 @@ class SalesTaxBar extends StatelessWidget {
     required this.applied,
     required this.onApply,
     required this.onRemove,
+    this.onAlways,
   });
 
   @override
@@ -52,7 +57,7 @@ class SalesTaxBar extends StatelessWidget {
     final pct = rate.ratePct == rate.ratePct.roundToDouble()
         ? rate.ratePct.toStringAsFixed(0)
         : rate.ratePct.toString();
-    return Container(
+    final bar = Container(
       margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
       decoration: BoxDecoration(
@@ -78,6 +83,20 @@ class SalesTaxBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (applied || s.autoApply || onAlways == null) return bar;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        bar,
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: onAlways,
+            child: const Text('Always add sales tax to new invoices'),
+          ),
+        ),
+      ],
     );
   }
 }

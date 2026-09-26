@@ -100,13 +100,19 @@ class SalesTaxService {
   }) async {
     final client = await _db
         .from('clients')
-        .select('display_name, state, postal_code, country')
+        .select('display_name, state, postal_code, country, tax_exempt, tax_exempt_reason')
         .eq('id', clientId)
         .maybeSingle();
     if (client == null) {
       return const SalesTaxSuggestion(reason: 'Could not read the client.');
     }
     final name = (client['display_name'] as String?) ?? 'This client';
+    if (client['tax_exempt'] == true) {
+      final why = ((client['tax_exempt_reason'] as String?) ?? '').trim();
+      return SalesTaxSuggestion(
+          reason: '$name is tax exempt${why.isEmpty ? '' : ' ($why)'}, '
+              'so no sales tax is added.');
+    }
     final country = ((client['country'] as String?) ?? 'US').trim().toUpperCase();
     if (country != 'US' && country != 'USA' && country != 'UNITED STATES') {
       return const SalesTaxSuggestion(
@@ -143,5 +149,23 @@ class SalesTaxService {
       rate: rate,
       autoApply: settings?['collects_sales_tax'] == true,
     );
+  }
+
+  /// "Always add sales tax": turns on the firm-wide setting (the same one as
+  /// Settings on the web), so new invoices fill their tax without asking.
+  /// Only owner/admin/accountant may write it; the policy is the real gate.
+  Future<void> setCollectsSalesTax(String orgId, bool on) async {
+    final rows = await _db
+        .from('sales_tax_settings')
+        .upsert({
+          'org_id': orgId,
+          'collects_sales_tax': on,
+          'updated_by': _db.auth.currentUser?.id,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
+        })
+        .select('org_id');
+    if ((rows as List).isEmpty) {
+      throw StateError('You do not have permission to change this setting.');
+    }
   }
 }

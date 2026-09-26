@@ -142,6 +142,25 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
     });
   }
 
+  /// Turns on "add sales tax to every new invoice" for the firm, then applies
+  /// it here too.
+  Future<void> _alwaysAddTax() async {
+    try {
+      await _taxService.setCollectsSalesTax(widget.workspace.orgId, true);
+      if (!mounted) return;
+      final r = _tax?.rate;
+      setState(() => _tax = SalesTaxSuggestion(rate: r, autoApply: true));
+      _applyTax();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('New invoices will now include sales tax automatically. '
+              'You can change this in Settings on the web.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save: ${friendlyError(e)}')));
+    }
+  }
+
   void _removeTax() {
     final r = _tax?.rate;
     setState(() {
@@ -353,6 +372,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
             applied: _taxApplied,
             onApply: _applyTax,
             onRemove: _removeTax,
+            onAlways: _alwaysAddTax,
           ),
           const SizedBox(height: 22),
           Text('LINES',

@@ -4,6 +4,7 @@ import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/client_action_sheet.dart';
 import 'invoices_screen.dart';
+import 'recurring_invoices_screen.dart';
 
 /// Same tab slot, different content by role: an own-invoices list for a
 /// solo/PYME workspace, a client list for a bookkeeping/accountant firm --
@@ -29,6 +30,7 @@ class _WorkScreenState extends State<WorkScreen> {
         title: Text(widget.workspace.isFirm ? 'Clients' : 'Invoices',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         actions: [
+          RecurringInvoicesButton(workspace: widget.workspace),
           // A firm's tab is its client list; every invoice of the firm is one
           // tap away here instead of buried inside each client.
           if (widget.workspace.isFirm)

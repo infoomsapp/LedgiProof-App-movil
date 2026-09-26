@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../utils/invoice_status.dart';
 import 'invoice_compose_screen.dart';
 import 'invoice_detail_screen.dart';
+import 'recurring_invoices_screen.dart';
 
 String _money(double v, String currency) =>
     '${currency == 'USD' ? '\$' : '$currency '}${v.toStringAsFixed(2)}';
@@ -36,6 +37,7 @@ class InvoicesScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Invoices',
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        actions: [RecurringInvoicesButton(workspace: workspace)],
       ),
       body: InvoicesBody(workspace: workspace),
       floatingActionButton: InvoiceNewButton(workspace: workspace),

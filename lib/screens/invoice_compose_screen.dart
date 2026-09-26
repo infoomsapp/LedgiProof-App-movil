@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/books_service.dart';
 import '../services/invoice_service.dart';
+import '../services/sales_tax_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
 import '../utils/invoice_status.dart';
+import '../widgets/sales_tax_bar.dart';
 import 'invoice_detail_screen.dart';
 
 /// Compose an invoice on the phone: pick the client, set a due date, add
@@ -46,6 +48,16 @@ class InvoiceComposeScreen extends StatefulWidget {
 class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   final _service = InvoiceService();
   final _books = BooksService();
+  final _taxService = SalesTaxService();
+
+  // Sales tax worked out from the client's state, so it is never typed by hand.
+  SalesTaxSuggestion? _tax;
+  bool _taxLoading = false;
+  bool _taxApplied = false;
+
+  /// Bumped whenever tax is written into the lines, so their text fields are
+  /// rebuilt (a TextFormField only reads its initial value once).
+  int _taxEpoch = 0;
 
   ClientSummary? _client;
   DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
@@ -61,6 +73,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   void initState() {
     super.initState();
     _client = widget.client;
+    if (_client != null && widget.editing == null) _loadTax(allowAuto: true);
 
     final editing = widget.editing;
     if (editing != null) {
@@ -86,7 +99,58 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
                 taxRate: i.taxRate,
               )));
       }
+      // A draft keeps the tax it was saved with; the suggestion is only offered.
+      _loadTax(allowAuto: false);
     }
+  }
+
+  Future<void> _loadTax({required bool allowAuto}) async {
+    final c = _client;
+    if (c == null) return;
+    setState(() {
+      _taxLoading = true;
+      _tax = null;
+    });
+    SalesTaxSuggestion result;
+    try {
+      result = await _taxService.suggestFor(
+          orgId: widget.workspace.orgId, clientId: c.id);
+    } catch (_) {
+      result = const SalesTaxSuggestion(
+          reason: 'Could not look up sales tax. You can still enter it by hand.');
+    }
+    // The person may have picked somebody else while this was loading.
+    if (!mounted || _client?.id != c.id) return;
+    setState(() {
+      _tax = result;
+      _taxLoading = false;
+    });
+    if (allowAuto && result.autoApply && result.rate != null) _applyTax();
+  }
+
+  /// Fills the tax on every line that has none; a line already taxed by hand
+  /// is left alone.
+  void _applyTax() {
+    final r = _tax?.rate;
+    if (r == null) return;
+    setState(() {
+      for (final i in _items) {
+        if (i.taxRate == 0) i.taxRate = r.ratePct;
+      }
+      _taxApplied = true;
+      _taxEpoch++;
+    });
+  }
+
+  void _removeTax() {
+    final r = _tax?.rate;
+    setState(() {
+      for (final i in _items) {
+        if (r != null && i.taxRate == r.ratePct) i.taxRate = 0;
+      }
+      _taxApplied = false;
+      _taxEpoch++;
+    });
   }
 
   @override
@@ -135,7 +199,11 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
                 ),
         ),
       );
-      if (picked != null && mounted) setState(() => _client = picked);
+      if (picked != null && mounted) {
+        if (_taxApplied) _removeTax(); // the old client's rate must not linger
+        setState(() => _client = picked);
+        _loadTax(allowAuto: !widget.isEditing);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -279,6 +347,13 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
               ],
             ),
           ),
+          SalesTaxBar(
+            suggestion: _tax,
+            loading: _taxLoading,
+            applied: _taxApplied,
+            onApply: _applyTax,
+            onRemove: _removeTax,
+          ),
           const SizedBox(height: 22),
           Text('LINES',
               style: TextStyle(
@@ -289,7 +364,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
           const SizedBox(height: 8),
           for (var i = 0; i < _items.length; i++)
             _ItemEditor(
-              key: ValueKey(_items[i]),
+              key: ValueKey('${identityHashCode(_items[i])}-$_taxEpoch'),
               item: _items[i],
               onChanged: () => setState(() {}),
               onRemove: _items.length == 1
@@ -299,8 +374,11 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed:
-                  _busy ? null : () => setState(() => _items.add(DraftItem())),
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _items.add(DraftItem(
+                      taxRate:
+                          _taxApplied ? (_tax?.rate?.ratePct ?? 0) : 0))),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a line'),
             ),

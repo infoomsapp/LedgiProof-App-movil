@@ -4,6 +4,7 @@ import 'config/supabase_config.dart';
 import 'screens/app_shell.dart';
 import 'screens/login_screen.dart';
 import 'screens/mfa_verify_screen.dart';
+import 'screens/trial_ended_gate.dart';
 import 'services/workspace_service.dart';
 import 'theme/app_theme.dart';
 
@@ -191,11 +192,20 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
             ),
           );
         }
-        return AppShell(
-          workspace: snap.data!.active,
-          scope: snap.data!,
-          onSwitch: _switchTo,
-          onCreatePersonal: _createPersonal,
+        final scope = snap.data!;
+        final others = scope.orgs.where((o) => o.orgId != scope.active.orgId).toList();
+        return TrialEndedGate(
+          key: ValueKey(scope.active.orgId),
+          orgId: scope.active.orgId,
+          isPortalClient: scope.active.isPortalClient,
+          canSwitch: others.isNotEmpty,
+          onSwitchWorkspace: () { if (others.isNotEmpty) _switchTo(others.first); },
+          child: AppShell(
+            workspace: scope.active,
+            scope: scope,
+            onSwitch: _switchTo,
+            onCreatePersonal: _createPersonal,
+          ),
         );
       },
     );

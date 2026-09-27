@@ -143,6 +143,64 @@ class CashFlow {
   bool get isEmpty => lines.isEmpty && netIncome == 0 && netChange == 0;
 }
 
+/// One expense account measured against its budget.
+class BudgetLine {
+  final String code;
+  final String name;
+  final double budget;
+  final double actual;
+  final double remaining;
+
+  /// False means this account spent money with no budget behind it. Reported,
+  /// not hidden: unbudgeted spending is an answer, not a blank.
+  final bool hasBudget;
+
+  /// Null when there is no budget to be over.
+  final double? overPct;
+
+  BudgetLine.fromRow(Map<String, dynamic> r)
+      : code = (r['code'] as String?) ?? '',
+        name = (r['name'] as String?) ?? '',
+        budget = (r['budget'] as num?)?.toDouble() ?? 0,
+        actual = (r['actual'] as num?)?.toDouble() ?? 0,
+        remaining = (r['remaining'] as num?)?.toDouble() ?? 0,
+        hasBudget = (r['has_budget'] as bool?) ?? false,
+        overPct = (r['over_pct'] as num?)?.toDouble();
+
+  bool get isOver => hasBudget && remaining < 0;
+}
+
+class BudgetVsActual {
+  final String period;
+  final double totalBudget;
+  final double totalActual;
+
+  /// The whole-month ceiling (a budget row with no account). It is the figure
+  /// the Brain checks a new expense against, and it is kept apart from the
+  /// per-account lines so the two are never added together.
+  final double periodBudget;
+  final List<BudgetLine> lines;
+
+  BudgetVsActual.fromJson(Map<String, dynamic> j)
+      : period = (j['period'] as String?) ?? '',
+        totalBudget = (j['total_budget'] as num?)?.toDouble() ?? 0,
+        totalActual = (j['total_actual'] as num?)?.toDouble() ?? 0,
+        periodBudget = (j['period_budget'] as num?)?.toDouble() ?? 0,
+        lines = ((j['lines'] as List?) ?? [])
+            .map((r) => BudgetLine.fromRow(Map<String, dynamic>.from(r as Map)))
+            .toList();
+
+  double get ceilingLeft => periodBudget - totalActual;
+  bool get overCeiling => periodBudget > 0 && ceilingLeft < 0;
+
+  /// No ceiling and not one budgeted account: nothing has been budgeted for
+  /// this period at all, which reads differently from "no data".
+  bool get hasNoBudget =>
+      periodBudget == 0 && !lines.any((l) => l.hasBudget);
+
+  bool get isEmpty => hasNoBudget && lines.isEmpty;
+}
+
 class ReportService {
   final _db = Supabase.instance.client;
 
@@ -195,5 +253,20 @@ class ReportService {
       'p_client_id': clientId,
     });
     return CashFlow.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<BudgetVsActual> budgetVsActual({
+    required String orgId,
+    required int year,
+    required int month,
+    String? clientId,
+  }) async {
+    final data = await _db.rpc('get_budget_vs_actual', params: {
+      'p_org_id': orgId,
+      'p_year': year,
+      'p_month': month,
+      'p_client_id': clientId,
+    });
+    return BudgetVsActual.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

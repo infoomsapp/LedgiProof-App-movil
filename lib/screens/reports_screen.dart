@@ -22,7 +22,7 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-enum _Report { pl, balanceSheet, cashFlow }
+enum _Report { pl, balanceSheet, cashFlow, budget }
 
 class _ReportsScreenState extends State<ReportsScreen> {
   final _service = ReportService();
@@ -40,15 +40,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _load();
   }
 
+  /// A client-portal workspace is one client inside the firm's org, and every
+  /// report RPC matches on `client_id IS NOT DISTINCT FROM p_client_id` — so
+  /// without this a portal user was reading the firm's own books instead of
+  /// their own. Null for every other kind of workspace, which is the
+  /// org-level scope those reports already used.
+  String? get _clientId => widget.workspace.portalClientId;
+
   void _load() {
     setState(() {
       _future = switch (_report) {
         _Report.pl => _service.profitAndLoss(
-            orgId: widget.workspace.orgId, year: _year, month: _month),
+            orgId: widget.workspace.orgId,
+            year: _year,
+            month: _month,
+            clientId: _clientId),
         _Report.balanceSheet => _service.balanceSheet(
-            orgId: widget.workspace.orgId, year: _year, month: _month),
+            orgId: widget.workspace.orgId,
+            year: _year,
+            month: _month,
+            clientId: _clientId),
         _Report.cashFlow => _service.cashFlow(
-            orgId: widget.workspace.orgId, year: _year, month: _month),
+            orgId: widget.workspace.orgId,
+            year: _year,
+            month: _month,
+            clientId: _clientId),
+        _Report.budget => _service.budgetVsActual(
+            orgId: widget.workspace.orgId,
+            year: _year,
+            month: _month,
+            clientId: _clientId),
       };
     });
   }
@@ -66,24 +87,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Column(
               children: [
-                Row(
+                // Four labels do not fit one row at 360dp, and shrinking
+                // them to fit is how a label ends up as 'Budget v...'. Two
+                // rows of two, each still full width.
+                Column(
                   children: [
-                    for (final (r, label) in const [
-                      (_Report.pl, 'P&L'),
-                      (_Report.balanceSheet, 'Balance'),
-                      (_Report.cashFlow, 'Cash Flow'),
+                    for (final pair in const [
+                      [(_Report.pl, 'P&L'), (_Report.balanceSheet, 'Balance')],
+                      [
+                        (_Report.cashFlow, 'Cash Flow'),
+                        (_Report.budget, 'Budget')
+                      ],
                     ]) ...[
-                      Expanded(
-                        child: _Toggle(
-                          label: label,
-                          selected: _report == r,
-                          onTap: () {
-                            _report = r;
-                            _load();
-                          },
-                        ),
+                      Row(
+                        children: [
+                          for (final (r, label) in pair) ...[
+                            Expanded(
+                              child: _Toggle(
+                                label: label,
+                                selected: _report == r,
+                                onTap: () {
+                                  _report = r;
+                                  _load();
+                                },
+                              ),
+                            ),
+                            if (r != pair.last.$1) const SizedBox(width: 6),
+                          ],
+                        ],
                       ),
-                      if (r != _Report.cashFlow) const SizedBox(width: 6),
+                      if (pair.last.$1 != _Report.budget)
+                        const SizedBox(height: 6),
                     ],
                   ],
                 ),
@@ -132,6 +166,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   return data.isEmpty
                       ? _noData()
                       : _CfView(data: data, currency: 'USD');
+                }
+                if (data is BudgetVsActual) {
+                  // 'No budget set' is not 'no data': the period may be full
+                  // of posted expenses and simply have nothing to measure
+                  // them against.
+                  if (data.hasNoBudget) {
+                    return _Empty(
+                      icon: Icons.flag_outlined,
+                      title: 'No budget set for '
+                          '${_months[_month - 1]} $_year.',
+                      body: 'Budgets are set on the web app, under Reports -> '
+                          'Budget vs Actual. Once a monthly ceiling is set, '
+                          'this report fills in and the assistant can warn '
+                          'you before an expense puts the month over it.',
+                      onRetry: _load,
+                    );
+                  }
+                  return _BudgetView(data: data, currency: 'USD');
                 }
                 return const SizedBox.shrink();
               },
@@ -443,6 +495,153 @@ class _CfView extends StatelessWidget {
               ? 'No account is marked as cash, so this statement cannot reconcile.'
               : 'Cash accounts: ${data.cashAccounts.join(', ')}',
           style: TextStyle(fontSize: 11.5, color: AppColors.inkSubtle),
+        ),
+      ],
+    );
+  }
+}
+
+/// Budget vs Actual. The monthly ceiling leads, because it is the one figure
+/// the assistant checks a new expense against; the per-account lines below it
+/// are the breakdown, never added to it.
+class _BudgetView extends StatelessWidget {
+  final BudgetVsActual data;
+  final String currency;
+  const _BudgetView({required this.data, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    final over = data.overCeiling;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+      children: [
+        if (data.periodBudget > 0)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: over ? AppColors.redBg : AppColors.greenBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: (over ? AppColors.red : AppColors.green)
+                    .withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        over
+                            ? 'Over the monthly ceiling'
+                            : 'Within the monthly ceiling',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: over ? AppColors.red : AppColors.green,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_money(data.ceilingLeft.abs(), currency)}'
+                      '${over ? ' over' : ' left'}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: over ? AppColors.red : AppColors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Spent ${_money(data.totalActual, currency)} of '
+                  '${_money(data.periodBudget, currency)} budgeted '
+                  'for the month.',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.inkMuted),
+                ),
+              ],
+            ),
+          ),
+        if (data.periodBudget > 0) const SizedBox(height: 16),
+        for (final l in data.lines)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${l.code}  ${l.name}',
+                        style: TextStyle(
+                            fontSize: 13, color: AppColors.ink),
+                      ),
+                    ),
+                    Text(
+                      l.hasBudget
+                          ? '${_money(l.remaining.abs(), currency)}'
+                              '${l.isOver ? ' over' : ' left'}'
+                          : _money(l.actual, currency),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: !l.hasBudget
+                            ? AppColors.inkMuted
+                            : l.isOver
+                                ? AppColors.red
+                                : AppColors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l.hasBudget
+                      ? '${_money(l.actual, currency)} of '
+                          '${_money(l.budget, currency)}'
+                          '${l.overPct == null ? '' : '  ·  '
+                              '${l.overPct! > 0 ? '+' : ''}'
+                              '${l.overPct!.toStringAsFixed(1)}%'}'
+                      : 'Not budgeted',
+                  style:
+                      TextStyle(fontSize: 11.5, color: AppColors.inkMuted),
+                ),
+                const SizedBox(height: 6),
+                Divider(height: 1, color: AppColors.border),
+              ],
+            ),
+          ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Totals',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink)),
+            Text(
+              '${_money(data.totalActual, currency)} of '
+              '${_money(data.totalBudget, currency)}',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.ink),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Actuals come from the same journal entries as the P&L. Accounts '
+          'with no budget are listed when they spent something, so '
+          'unbudgeted spending is visible rather than missing.',
+          style: TextStyle(fontSize: 11.5, color: AppColors.inkMuted),
         ),
       ],
     );

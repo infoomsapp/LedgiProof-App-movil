@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'screens/app_shell.dart';
 import 'screens/login_screen.dart';
+import 'screens/mfa_verify_screen.dart';
 import 'services/workspace_service.dart';
 import 'theme/app_theme.dart';
 
@@ -59,8 +60,17 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<AuthState>(
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snap) {
-        final session = Supabase.instance.client.auth.currentSession;
+        final auth = Supabase.instance.client.auth;
+        final session = auth.currentSession;
         if (session == null) return const LoginScreen();
+        // A user with a verified authenticator must finish the second factor
+        // before anything loads -- the database answers their aal1 session
+        // with nothing (see mfa_verify_screen.dart).
+        final aal = auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aal.nextLevel == AuthenticatorAssuranceLevels.aal2 &&
+            aal.currentLevel != AuthenticatorAssuranceLevels.aal2) {
+          return const MfaVerifyScreen();
+        }
         return const _WorkspaceLoader();
       },
     );

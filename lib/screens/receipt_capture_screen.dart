@@ -4,15 +4,16 @@ import 'package:image_picker/image_picker.dart';
 import '../services/receipt_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/errors.dart';
 
 enum _Stage { pick, uploading, extracting, done, error }
 
-/// Camera -> real OCR -> result, exactly the contract
-/// supabase/functions/ocr-receipt already serves the web app: this does NOT
-/// create a transaction (the web app doesn't either -- a receipt is a
-/// registered, OCR'd document; matching it to a transaction is a separate,
-/// existing step). Showing anything more here would be simulating a "Save
-/// expense" flow the real backend doesn't support yet.
+/// Camera -> real OCR -> result + bank match, exactly the contract
+/// supabase/functions/ocr-receipt serves the web app: the receipt is a
+/// registered, OCR'd document, and match_receipt() (run by the edge function)
+/// links it to its bank transaction when there is a clear winner, offers the
+/// likely candidates when there isn't, or leaves it waiting -- a statement
+/// imported later links it by itself. It does not create a transaction.
 class ReceiptCaptureScreen extends StatefulWidget {
   final Workspace workspace;
   /// Set in a firm workspace once a client has been chosen (see
@@ -34,6 +35,8 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   _Stage _stage = _Stage.pick;
   String? _error;
   OcrResult? _result;
+  String? _linkedId;
+  String? _linking;
 
   Future<void> _capture(ImageSource source) async {
     final XFile? picked = await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
@@ -70,7 +73,25 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         _stage = _Stage.pick;
         _result = null;
         _error = null;
+        _linkedId = null;
+        _linking = null;
       });
+
+  Future<void> _link(MatchTx tx) async {
+    setState(() => _linking = tx.id);
+    try {
+      await _service.linkReceipt(documentId: _result!.documentId, transactionId: tx.id);
+      if (!mounted) return;
+      setState(() => _linkedId = tx.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e, "Couldn't link the receipt."))),
+      );
+    } finally {
+      if (mounted) setState(() => _linking = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,15 +209,70 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
             if (r.category != null) _field('Category', r.category!.replaceAll('_', ' ')),
           ],
           const SizedBox(height: 8),
-          Text(
-            'This receipt is stored and searchable in your documents. Matching it to a bank transaction happens from Review, same as the web app.',
-            style: TextStyle(fontSize: 11.5, color: AppColors.inkSubtle, height: 1.5),
-          ),
+          if (r.match != null) Flexible(child: SingleChildScrollView(child: _buildMatch(r.match!))),
           const Spacer(),
           TextButton(onPressed: _reset, child: const Text('Scan another')),
         ],
       ),
     );
+  }
+
+  Widget _buildMatch(ReceiptMatch m) {
+    Widget box(Color bg, Widget child) => Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: bg, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(10)),
+          child: child,
+        );
+    String line(MatchTx t) =>
+        '${t.description ?? 'Transaction'} · \$${t.amount.abs().toStringAsFixed(2)} · ${t.transactionDate}';
+    final muted = TextStyle(fontSize: 12, color: AppColors.inkMuted, height: 1.4);
+
+    switch (m.status) {
+      case 'matched':
+        return box(
+          AppColors.cyanBg,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.link, size: 16, color: AppColors.cyan),
+              const SizedBox(width: 6),
+              Text('Matched to your bank transaction',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+            ]),
+            if (m.transaction != null) ...[const SizedBox(height: 4), Text(line(m.transaction!), style: muted)],
+          ]),
+        );
+      case 'suggested':
+        return box(
+          AppColors.amberBg,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Which bank transaction is this receipt for?',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+            const SizedBox(height: 6),
+            for (final c in m.candidates)
+              Row(children: [
+                Expanded(child: Text(line(c), maxLines: 2, overflow: TextOverflow.ellipsis, style: muted)),
+                if (_linkedId == c.id)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    child: Text('Linked', style: TextStyle(color: AppColors.cyan, fontWeight: FontWeight.w700, fontSize: 12)),
+                  )
+                else
+                  TextButton(
+                    onPressed: _linking != null || _linkedId != null ? null : () => _link(c),
+                    child: Text(_linking == c.id ? '…' : 'This one'),
+                  ),
+              ]),
+          ]),
+        );
+      case 'no_amount':
+        return box(AppColors.amberBg, Text("We couldn't read a total, so this receipt wasn't matched.", style: muted));
+      default:
+        return box(
+          AppColors.surface,
+          Text('No bank transaction matches yet — it will link by itself when the statement arrives.', style: muted),
+        );
+    }
   }
 
   Widget _field(String label, String value) {

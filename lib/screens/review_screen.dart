@@ -188,6 +188,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
             'source': _choices[id]!.source,
             'invoice_id': ?_choices[id]!.match?.invoiceId,
             'payment_id': ?_choices[id]!.match?.paymentId,
+            'bill_id': ?_choices[id]!.match?.billId,
           },
     ];
     if (payload.isEmpty) return;

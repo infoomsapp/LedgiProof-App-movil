@@ -40,7 +40,7 @@ class _BillsScreenState extends State<BillsScreen> {
   }
 
   Future<void> _init() async {
-    final ok = await _service.hasBillTracking();
+    final ok = await _service.hasBillTracking(widget.workspace.orgId);
     if (!mounted) return;
     setState(() => _allowed = ok);
     if (ok) await _load();
@@ -363,17 +363,9 @@ class _BillSheet extends StatefulWidget {
 
 class _BillSheetState extends State<_BillSheet> {
   final _service = BillService();
-  late final _amount =
-      TextEditingController(text: widget.bill.amount.toStringAsFixed(2));
   DateTime _paidOn = DateTime.now();
   bool _busy = false;
   String? _error;
-
-  @override
-  void dispose() {
-    _amount.dispose();
-    super.dispose();
-  }
 
   Future<void> _pickDate() async {
     final d = await showDatePicker(
@@ -386,17 +378,30 @@ class _BillSheetState extends State<_BillSheet> {
   }
 
   Future<void> _markPaid() async {
-    final amount = double.tryParse(_amount.text.trim().replaceAll(',', ''));
-    if (amount == null || amount <= 0) {
-      setState(() => _error = 'Enter an amount greater than zero.');
-      return;
-    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await _service.markPaid(widget.bill.id, amount: amount, date: _paidOn);
+      await _service.markPaid(widget.bill.id, date: _paidOn);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = friendlyError(e);
+        });
+      }
+    }
+  }
+
+  Future<void> _markUnpaid() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await _service.markUnpaid(widget.bill);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -479,22 +484,35 @@ class _BillSheetState extends State<_BillSheet> {
                   style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
             ],
             const SizedBox(height: 16),
-            if (b.isPaid)
+            if (b.isPaid) ...[
               Text(
                 'Paid ${_money(b.paidAmount ?? b.amount)}'
                 '${b.paidAt == null ? '' : ' on ${_date(b.paidAt!.toLocal())}'}.',
                 style: TextStyle(fontSize: 13, color: AppColors.green),
-              )
-            else ...[
-              Text('Already paid it? Record it here.',
-                  style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _amount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Amount paid'),
               ),
+              const SizedBox(height: 4),
+              Text(
+                b.isInTransit
+                    ? 'Waiting for the bank withdrawal — it will be suggested in Review.'
+                    : 'Matched to the bank withdrawal.',
+                style: TextStyle(fontSize: 12, color: AppColors.inkMuted),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!,
+                    style: TextStyle(fontSize: 12.5, color: AppColors.red)),
+              ],
+              if (b.isInTransit) ...[
+                const SizedBox(height: 10),
+                OutlinedButton(
+                  onPressed: _busy ? null : _markUnpaid,
+                  child: const Text('Mark unpaid'),
+                ),
+              ],
+            ]
+            else ...[
+              Text('Already paid it? Record the full amount here.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
               const SizedBox(height: 10),
               InkWell(
                 onTap: _pickDate,
@@ -521,11 +539,14 @@ class _BillSheetState extends State<_BillSheet> {
               ),
             ],
             const SizedBox(height: 4),
-            TextButton.icon(
-              onPressed: _busy ? null : _delete,
-              icon: Icon(Icons.delete_outline, size: 17, color: AppColors.red),
-              label: Text('Remove bill', style: TextStyle(color: AppColors.red)),
-            ),
+            // A paid bill is in the books twice over (bill + payment): it
+            // can't be removed (LB007), only marked unpaid first.
+            if (!b.isPaid)
+              TextButton.icon(
+                onPressed: _busy ? null : _delete,
+                icon: Icon(Icons.delete_outline, size: 17, color: AppColors.red),
+                label: Text('Remove bill', style: TextStyle(color: AppColors.red)),
+              ),
           ],
         ),
       ),
@@ -552,6 +573,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
   List<Vendor>? _vendors;
   String? _vendorId;
   bool _addingVendor = false;
+  DateTime _billDate = DateTime.now();
   DateTime _due = DateTime.now().add(const Duration(days: 30));
   DueTerms? _terms = DueTerms.net30;
   bool _busy = false;
@@ -578,6 +600,22 @@ class _AddBillSheetState extends State<_AddBillSheet> {
     _notes.dispose();
     _newVendor.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickBillDate() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _billDate,
+      firstDate: DateTime(now.year - 2),
+      lastDate: now.add(const Duration(days: 1)),
+    );
+    if (d != null) {
+      setState(() {
+        _billDate = d;
+        if (_terms != null) _due = _terms!.dueFrom(d);
+      });
+    }
   }
 
   Future<void> _pickDue() async {
@@ -620,6 +658,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
         vendorId: vendorId!,
         amount: amount,
         dueDate: _due,
+        billDate: _billDate,
         billNumber: _number.text,
         notes: _notes.text,
       );
@@ -710,6 +749,14 @@ class _AddBillSheetState extends State<_AddBillSheet> {
             ),
             const SizedBox(height: 12),
             InkWell(
+              onTap: _pickBillDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(labelText: 'Bill date'),
+                child: Text(_date(_billDate)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            InkWell(
               onTap: _pickDue,
               child: InputDecorator(
                 decoration: const InputDecoration(labelText: 'Due'),
@@ -730,7 +777,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                         selected: _terms == t,
                         onSelected: (_) => setState(() {
                           _terms = t;
-                          _due = t.dueFrom(DateTime.now());
+                          _due = t.dueFrom(_billDate);
                         }),
                       ),
                     ),

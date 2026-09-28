@@ -15,6 +15,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 String friendlyError(Object error, [String fallback = 'Something went wrong. Please try again.']) {
   if (error is PostgrestException) {
     final code = error.code;
+    // LedgiProof's own errors: one SQLSTATE per distinct error (L + area +
+    // 3 digits, see the web's src/lib/errors.ts). Their message was written
+    // for the user, values included -- show it as is.
+    if (code != null && _lpErrorCode.hasMatch(code) && error.message.isNotEmpty) {
+      return error.message;
+    }
     return code != null ? (_codeMessages[code] ?? fallback) : fallback;
   }
   // Auth errors are the one exception-type exception: Supabase writes these
@@ -31,6 +37,8 @@ String friendlyError(Object error, [String fallback = 'Something went wrong. Ple
   // this app's own deliberate throw sites.
   return fallback;
 }
+
+final _lpErrorCode = RegExp(r'^L[A-Z][0-9]{3}$');
 
 const _codeMessages = <String, String>{
   '23505': 'This already exists.',

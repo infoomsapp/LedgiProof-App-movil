@@ -3,8 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Vendor bills: what a firm owes its vendors and when. Mirrors the web's
 /// bill.service.ts (same table, same statuses, same plan feature).
 ///
-/// Scope, stated plainly because it shapes the UI: this TRACKS bills and
-/// records that they were paid. It does not move money. QuickBooks and Xero
+/// Every bill posts itself to the ledger on the server (bills_ledger.sql):
+/// Dr expense / Cr Accounts Payable. "Mark paid" records a payment made
+/// outside the app (Dr AP / Cr Bill Payments in Transit); the bank withdrawal
+/// is then matched in Review. It does not move money. QuickBooks and Xero
 /// draw the same line -- "Mark as paid" only records a payment made elsewhere,
 /// and actually sending an ACH or a check is a separate, paid payments product
 /// (QuickBooks Bill Pay, Xero + BILL) that needs a connected payment processor.
@@ -31,6 +33,13 @@ class VendorBill {
   final DateTime? paidAt;
   final double? paidAmount;
   final String? notes;
+  final DateTime billDate;
+
+  /// 'manual' = marked paid here; 'bank' = paid straight from the bank feed.
+  final String? paidVia;
+
+  /// The bank withdrawal this payment is matched to, once it is.
+  final String? transactionId;
 
   VendorBill.fromRow(Map<String, dynamic> r, Map<String, String> vendorNames)
       : id = r['id'] as String,
@@ -45,9 +54,16 @@ class VendorBill {
             ? null
             : DateTime.tryParse(r['paid_at'] as String),
         paidAmount = (r['paid_amount'] as num?)?.toDouble(),
-        notes = r['notes'] as String?;
+        notes = r['notes'] as String?,
+        billDate = DateTime.tryParse((r['bill_date'] as String?) ?? '') ??
+            DateTime.now(),
+        paidVia = r['paid_via'] as String?,
+        transactionId = r['transaction_id'] as String?;
 
   bool get isPaid => status == 'paid';
+
+  /// Paid here, waiting for its bank withdrawal to be matched in Review.
+  bool get isInTransit => isPaid && transactionId == null && paidVia != 'bank';
 }
 
 class BillService {
@@ -59,18 +75,16 @@ class BillService {
   static const _roles = {'owner', 'admin', 'accountant'};
   static bool canManageBills(String role) => _roles.contains(role);
 
-  /// Bill tracking is a Bookkeeper/Accountant plan feature. Same check the web
-  /// makes (check_feature_access); when it cannot be determined the answer is
-  /// "no" rather than showing a feature the plan may not include.
-  Future<bool> hasBillTracking() async {
-    final userId = _db.auth.currentUser?.id;
-    if (userId == null) return false;
+  /// Bill tracking is a Bookkeeper/Accountant plan feature -- of the
+  /// WORKSPACE (its owner's plan), read from get_workspace_plan like the web.
+  /// The server refuses bills on other plans (LB009) either way; when the
+  /// plan can't be read the answer is "no" rather than a form that will fail.
+  Future<bool> hasBillTracking(String orgId) async {
     try {
-      final res = await _db.rpc('check_feature_access', params: {
-        'p_user_id': userId,
-        'p_feature_key': 'bill_tracking',
-      });
-      return res is Map && res['allowed'] == true;
+      final res = await _db.rpc('get_workspace_plan', params: {'p_org_id': orgId});
+      final features = (res as Map)['features'] as Map?;
+      final limit = (features?['bill_tracking'] as num?)?.toInt() ?? 0;
+      return limit != 0;
     } catch (_) {
       return false;
     }
@@ -118,6 +132,7 @@ class BillService {
     required String vendorId,
     required double amount,
     required DateTime dueDate,
+    DateTime? billDate,
     String? billNumber,
     String? notes,
   }) async {
@@ -127,22 +142,21 @@ class BillService {
       'vendor_id': vendorId,
       'amount': amount,
       'due_date': dueDate.toIso8601String().substring(0, 10),
+      if (billDate != null) 'bill_date': billDate.toIso8601String().substring(0, 10),
       if ((billNumber ?? '').trim().isNotEmpty) 'bill_number': billNumber!.trim(),
       if ((notes ?? '').trim().isNotEmpty) 'notes': notes!.trim(),
     });
   }
 
-  /// Records that the bill was paid (outside the app). Only a bill that is not
+  /// Records that the bill was paid (outside the app), for its full amount
+  /// (partial payments aren't supported: LB004). Only a bill that is not
   /// already paid can be marked, so a double tap cannot overwrite the first
   /// record.
-  Future<void> markPaid(String billId,
-      {required double amount, required DateTime date}) async {
-    if (amount <= 0) throw StateError('Enter an amount greater than zero.');
+  Future<void> markPaid(String billId, {required DateTime date}) async {
     final updated = await _db
         .from('vendor_bills')
         .update({
           'status': 'paid',
-          'paid_amount': amount,
           'paid_at': date.toUtc().toIso8601String(),
         })
         .eq('id', billId)
@@ -151,6 +165,16 @@ class BillService {
     if ((updated as List).isEmpty) {
       throw StateError('This bill is already marked as paid.');
     }
+  }
+
+  /// Undo "Mark paid" -- refused once its bank withdrawal is matched (LB006).
+  Future<void> markUnpaid(VendorBill bill) async {
+    final today = DateTime.now();
+    final overdue = bill.dueDate.isBefore(DateTime(today.year, today.month, today.day));
+    await _db
+        .from('vendor_bills')
+        .update({'status': overdue ? 'overdue' : 'pending'})
+        .eq('id', bill.id);
   }
 
   Future<void> deleteBill(String billId) async {

@@ -12,29 +12,54 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///                      (bank side implied), marks it blue/verified with the
 ///                      audit hash chain, learns the merchant.
 ///   setRule()       -> set_categorization_rule(): "always put X in Y".
-/// The deposit is exactly an open invoice's balance ("Payment for INV-0007"),
-/// or brings in a payment already recorded on an invoice.
+/// A bank line that settles a document, offered before any category:
+///   · a deposit that is exactly an open invoice's balance ("Payment for INV-0007")
+///   · a deposit that brings in a payment already recorded on an invoice
+///   · a withdrawal that pays an open bill, or is the money of a bill already
+///     marked paid ("in transit") -- bills_ledger.sql
 class DepositMatch {
   final String? invoiceId;
   final String? paymentId;
-  final String invoiceNumber;
-  final String? clientName;
+  final String? billId;
+  final String invoiceNumber; // the invoice or bill number ('' when none)
+  final String? clientName;   // the client, or the bill's vendor
+  final bool billInTransit;
 
   DepositMatch.invoice(Map<String, dynamic> j)
       : invoiceId = j['invoice_id'] as String,
         paymentId = null,
+        billId = null,
         invoiceNumber = j['invoice_number'] as String,
-        clientName = j['client_name'] as String?;
+        clientName = j['client_name'] as String?,
+        billInTransit = false;
 
   DepositMatch.payment(Map<String, dynamic> j)
       : invoiceId = null,
         paymentId = j['payment_id'] as String,
+        billId = null,
         invoiceNumber = j['invoice_number'] as String,
-        clientName = null;
+        clientName = null,
+        billInTransit = false;
 
-  String get label => invoiceId != null
-      ? 'Payment for $invoiceNumber${clientName != null ? ' · $clientName' : ''}'
-      : 'Deposit of the payment on $invoiceNumber';
+  DepositMatch.bill(Map<String, dynamic> j)
+      : invoiceId = null,
+        paymentId = null,
+        billId = j['bill_id'] as String,
+        invoiceNumber = (j['bill_number'] as String?) ?? '',
+        clientName = j['vendor_name'] as String?,
+        billInTransit = j['kind'] == 'in_transit';
+
+  String get label {
+    if (billId != null) {
+      final number = invoiceNumber.isEmpty ? '' : ' $invoiceNumber';
+      return billInTransit
+          ? 'Withdrawal of the payment for bill$number · ${clientName ?? 'vendor'}'
+          : 'Payment for bill$number · ${clientName ?? 'vendor'}';
+    }
+    return invoiceId != null
+        ? 'Payment for $invoiceNumber${clientName != null ? ' · $clientName' : ''}'
+        : 'Deposit of the payment on $invoiceNumber';
+  }
 }
 
 class ReviewItem {
@@ -69,7 +94,9 @@ class ReviewItem {
             ? DepositMatch.invoice(j['invoice_match'] as Map<String, dynamic>)
             : j['deposit_match'] is Map<String, dynamic>
                 ? DepositMatch.payment(j['deposit_match'] as Map<String, dynamic>)
-                : null;
+                : j['bill_match'] is Map<String, dynamic>
+                    ? DepositMatch.bill(j['bill_match'] as Map<String, dynamic>)
+                    : null;
 
   String get label => merchantName ?? description ?? 'Transaction';
   bool get moneyIn => amount > 0;
@@ -149,6 +176,8 @@ String suggestionSourceLabel(String? source) => switch (source) {
       'merchant' => 'Known merchant',
       'invoice' => 'Invoice payment',
       'deposit' => 'Recorded payment',
+      'bill' => 'Bill payment',
+      'bill_payment' => 'Recorded bill payment',
       'income' => 'Income',
       'ai' => 'AI',
       _ => '',

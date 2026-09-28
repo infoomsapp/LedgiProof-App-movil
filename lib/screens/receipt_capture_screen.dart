@@ -5,6 +5,7 @@ import '../services/receipt_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../widgets/receipt_edit_sheet.dart';
 
 enum _Stage { pick, uploading, extracting, done, error }
 
@@ -37,6 +38,15 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   OcrResult? _result;
   String? _linkedId;
   String? _linking;
+  bool _saving = false;
+
+  // What the receipt reads -- OCR first, then whatever the user corrected --
+  // and the latest match_receipt() decision for those values.
+  String? _merchant;
+  double? _amount;
+  String? _date;
+  String _currency = 'USD';
+  ReceiptMatch? _match;
 
   Future<void> _capture(ImageSource source) async {
     final XFile? picked = await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
@@ -58,6 +68,11 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       if (!mounted) return;
       setState(() {
         _result = result;
+        _merchant = result.merchantName;
+        _amount = result.totalAmount;
+        _date = result.date;
+        _currency = result.currency.toUpperCase();
+        _match = result.match;
         _stage = _Stage.done;
       });
     } catch (e) {
@@ -75,7 +90,35 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         _error = null;
         _linkedId = null;
         _linking = null;
+        _match = null;
       });
+
+  /// "Fix what was read": save the corrected values and match again.
+  Future<void> _edit() async {
+    if (_linkedId != null || _match?.status == 'matched' || _saving) return;
+    final fields = await showReceiptEditSheet(context,
+        merchant: _merchant, amount: _amount, date: _date, currency: _currency);
+    if (fields == null || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      final m = await _service.correct(_result!.documentId, fields);
+      if (!mounted) return;
+      setState(() {
+        _merchant = fields.merchant;
+        _amount = fields.amount;
+        _date = fields.date;
+        _currency = fields.currency;
+        _match = m;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e, "Couldn't save the receipt."))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   Future<void> _link(MatchTx tx) async {
     setState(() => _linking = tx.id);
@@ -199,17 +242,19 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
             ],
           ),
           const SizedBox(height: 18),
-          if (!r.hasData)
-            Text("Couldn't read this one clearly — it's saved to your documents for your bookkeeper to review.",
-                style: TextStyle(color: AppColors.inkMuted, fontSize: 13))
-          else ...[
-            _field('Merchant', r.merchantName ?? 'Tap to enter'),
-            _field('Amount', r.totalAmount != null ? '${r.currency} ${r.totalAmount!.toStringAsFixed(2)}' : 'Tap to enter'),
-            _field('Date', r.date ?? 'Tap to enter'),
-            if (r.category != null) _field('Category', r.category!.replaceAll('_', ' ')),
-          ],
+          if (_merchant == null && _amount == null && _date == null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text("Couldn't read this one clearly — enter the total to match it with your bank.",
+                  style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+            ),
+          _field('Merchant', _merchant ?? 'Tap to enter'),
+          _field('Amount', _amount != null ? formatMoney(_amount!, _currency) : 'Tap to enter'),
+          _field('Date', _date ?? 'Tap to enter'),
+          if (r.category != null) _field('Category', r.category!.replaceAll('_', ' '), editable: false),
+          if (_saving) const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: LinearProgressIndicator()),
           const SizedBox(height: 8),
-          if (r.match != null) Flexible(child: SingleChildScrollView(child: _buildMatch(r.match!))),
+          if (_match != null) Flexible(child: SingleChildScrollView(child: _buildMatch(_match!))),
           const Spacer(),
           TextButton(onPressed: _reset, child: const Text('Scan another')),
         ],
@@ -225,7 +270,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           child: child,
         );
     String line(MatchTx t) =>
-        '${t.description ?? 'Transaction'} · \$${t.amount.abs().toStringAsFixed(2)} · ${t.transactionDate}';
+        '${t.description ?? 'Transaction'} · ${formatMoney(t.amount, _currency)} · ${t.transactionDate}';
     final muted = TextStyle(fontSize: 12, color: AppColors.inkMuted, height: 1.4);
 
     switch (m.status) {
@@ -266,25 +311,39 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           ]),
         );
       case 'no_amount':
-        return box(AppColors.amberBg, Text("We couldn't read a total, so this receipt wasn't matched.", style: muted));
+        return box(AppColors.amberBg,
+            Text("We couldn't read a total. Tap Amount to enter it and we'll look for the bank transaction.", style: muted));
       default:
         return box(
           AppColors.surface,
-          Text('No bank transaction matches yet — it will link by itself when the statement arrives.', style: muted),
+          Text(
+            'No bank transaction matches yet — it will link by itself when the statement arrives. '
+            'It waits in Review until then.',
+            style: muted,
+          ),
         );
     }
   }
 
-  Widget _field(String label, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(9)),
-      child: Row(
-        children: [
-          SizedBox(width: 80, child: Text(label.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.4))),
-          Expanded(child: Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink))),
-        ],
+  /// Tapping a field corrects what was read -- until the receipt is linked.
+  Widget _field(String label, String value, {bool editable = true}) {
+    final canEdit = editable && _linkedId == null && _match?.status != 'matched' && !_saving;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(9),
+        onTap: canEdit ? _edit : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(9)),
+          child: Row(
+            children: [
+              SizedBox(width: 80, child: Text(label.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.4))),
+              Expanded(child: Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink))),
+              if (canEdit) Icon(Icons.edit_outlined, size: 15, color: AppColors.inkSubtle),
+            ],
+          ),
+        ),
       ),
     );
   }

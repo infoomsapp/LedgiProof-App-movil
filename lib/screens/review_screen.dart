@@ -8,6 +8,7 @@ import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
 import '../widgets/client_picker_sheet.dart';
+import '../widgets/pending_receipts_section.dart';
 import 'transaction_chat_screen.dart';
 
 /// The Review tab.
@@ -58,6 +59,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
   final Map<String, String> _rowErrors = {};
   final List<RulePrompt> _prompts = [];
   int _postedSinceLoad = 0;
+  int _receiptsRefresh = 0;
   String? _loadError;
   bool _loading = true;
 
@@ -267,7 +269,10 @@ class _ReviewInboxState extends State<_ReviewInbox> {
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: () => _load(quiet: true),
+        onRefresh: () {
+          setState(() => _receiptsRefresh++);
+          return _load(quiet: true);
+        },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
           children: [
@@ -297,6 +302,13 @@ class _ReviewInboxState extends State<_ReviewInbox> {
               ),
             if (!_canPost && items.isNotEmpty)
               _banner(AppColors.surface2, 'View only', 'Your role can see these suggestions; an owner, admin or accountant confirms them.'),
+            PendingReceiptsSection(
+              orgId: _orgId,
+              clientId: _clientId,
+              canWrite: _canPost,
+              refreshToken: _receiptsRefresh,
+              onExpenseCreated: () => _load(quiet: true),
+            ),
             if (_loading && q == null)
               const Padding(padding: EdgeInsets.only(top: 80), child: Center(child: CircularProgressIndicator()))
             else if (_loadError != null && q == null)
@@ -661,6 +673,7 @@ class _ClientReviewListState extends State<_ClientReviewList> {
   final _books = BooksService();
   late Future<List<SemaphoreTx>> _queue;
   List<SemaphoreTx>? _last;
+  int _refreshes = 0;
 
   @override
   void initState() {
@@ -669,6 +682,7 @@ class _ClientReviewListState extends State<_ClientReviewList> {
   }
 
   void _load() {
+    _refreshes++;
     _queue = _books.getReviewQueue(widget.workspace.orgId).then((r) {
       _last = r;
       return r;
@@ -694,10 +708,20 @@ class _ClientReviewListState extends State<_ClientReviewList> {
               return Center(child: Text('Could not load the review queue.', style: TextStyle(color: AppColors.red)));
             }
             final items = snap.data ?? _last ?? [];
+            // Their own scanned receipts that haven't found a bank line yet:
+            // they can pick it or fix what was read (the firm records cash).
+            final receipts = PendingReceiptsSection(
+              orgId: widget.workspace.orgId,
+              clientId: widget.workspace.portalClientId,
+              canWrite: false,
+              refreshToken: _refreshes,
+            );
             if (items.isEmpty) {
               return ListView(
+                padding: const EdgeInsets.all(12),
                 children: [
-                  const SizedBox(height: 80),
+                  receipts,
+                  const SizedBox(height: 60),
                   Icon(Icons.check_circle_outline, color: AppColors.green, size: 40),
                   const SizedBox(height: 10),
                   Center(child: Text('Nothing needs review right now', style: TextStyle(color: AppColors.inkMuted))),
@@ -706,10 +730,11 @@ class _ClientReviewListState extends State<_ClientReviewList> {
             }
             return ListView.separated(
               padding: const EdgeInsets.all(12),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemCount: items.length + 1,
+              separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : 8),
               itemBuilder: (context, i) {
-                final tx = items[i];
+                if (i == 0) return receipts;
+                final tx = items[i - 1];
                 return Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(

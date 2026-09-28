@@ -67,6 +67,48 @@ class OcrResult {
   bool get hasData => merchantName != null || totalAmount != null || date != null;
 }
 
+/// '$12.50' for USD, 'EUR 12.50' otherwise -- same as the review inbox rows.
+String formatMoney(double amount, String? currency) {
+  final c = (currency ?? 'USD').toUpperCase();
+  return '${c == 'USD' ? '\$' : '$c '}${amount.abs().toStringAsFixed(2)}';
+}
+
+/// What the user says the receipt reads (the OCR, corrected).
+class ReceiptFields {
+  final String? merchant;
+  final double amount;
+  final String? date; // YYYY-MM-DD
+  final String currency;
+  const ReceiptFields({this.merchant, required this.amount, this.date, this.currency = 'USD'});
+}
+
+/// A scanned receipt still waiting for its bank transaction
+/// (get_pending_receipts).
+class PendingReceipt {
+  final String id;
+  final String filename;
+  final String matchStatus; // 'suggested' | 'unmatched' | 'no_amount'
+  final String? merchant;
+  final double? amount;
+  final String? date;
+  final String currency;
+  final List<MatchTx> candidates;
+
+  PendingReceipt.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        filename = (j['filename'] as String?) ?? 'Receipt',
+        matchStatus = (j['match_status'] as String?) ?? 'unmatched',
+        merchant = j['ocr_merchant'] as String?,
+        amount = (j['ocr_amount'] as num?)?.toDouble(),
+        date = j['ocr_date'] as String?,
+        currency = ((j['ocr_currency'] as String?) ?? 'USD').toUpperCase(),
+        candidates = ((j['candidates'] as List?) ?? [])
+            .map((e) => MatchTx.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+  String get label => merchant ?? filename;
+}
+
 class ReceiptService {
   static const _bucket = 'transaction-documents';
   final _db = Supabase.instance.client;
@@ -125,5 +167,42 @@ class ReceiptService {
       'p_document_id': documentId,
       'p_transaction_id': transactionId,
     });
+  }
+
+  /// Receipts of this scope still waiting for their bank transaction.
+  Future<List<PendingReceipt>> getPending(String orgId, String? clientId) async {
+    final data = await _db.rpc('get_pending_receipts', params: {
+      'p_org_id': orgId,
+      'p_client_id': clientId,
+    });
+    return (((data as Map<String, dynamic>)['items'] as List?) ?? [])
+        .map((e) => PendingReceipt.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// The user corrected what OCR read: store it and look for the bank line
+  /// again -- match_receipt is the same RPC the edge function runs.
+  Future<ReceiptMatch> correct(String documentId, ReceiptFields f) async {
+    final data = await _db.rpc('match_receipt', params: {
+      'p_document_id': documentId,
+      'p_merchant': f.merchant ?? '',
+      'p_amount': f.amount,
+      'p_date': f.date,
+      'p_currency': f.currency,
+      'p_confidence': 100,
+    });
+    return ReceiptMatch.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Paid in cash / from an account that isn't imported: the receipt becomes
+  /// the expense transaction, which then waits in "For review".
+  Future<MatchTx> createExpense(String documentId) async {
+    final data = await _db.rpc('create_expense_from_receipt', params: {'p_document_id': documentId});
+    return MatchTx.fromJson((data as Map<String, dynamic>)['transaction'] as Map<String, dynamic>);
+  }
+
+  /// The receipt doesn't need a transaction.
+  Future<void> dismiss(String documentId) async {
+    await _db.rpc('dismiss_receipt', params: {'p_document_id': documentId});
   }
 }

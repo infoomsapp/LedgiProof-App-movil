@@ -152,4 +152,46 @@ void main() {
       expect(OcrResult.fromJson(ocr(null)).match, isNull);
     });
   });
+
+  // Shape of get_pending_receipts() on the live database.
+  group('pending receipts', () {
+    test('parses OCR fields and candidates', () {
+      final r = PendingReceipt.fromJson({
+        'id': 'd1',
+        'filename': 'IMG_0001.jpg',
+        'created_at': '2026-09-28T13:00:00Z',
+        'match_status': 'suggested',
+        'ocr_merchant': 'Shell',
+        'ocr_amount': 24.5,
+        'ocr_date': '2026-09-21',
+        'ocr_currency': 'usd',
+        'ocr_confidence': 88,
+        'candidates': [
+          {'id': 't1', 'description': 'SHELL OIL 5739', 'amount': -24.50, 'transaction_date': '2026-09-21', 'score': 80},
+        ],
+      });
+      expect(r.label, 'Shell');
+      expect(r.amount, 24.5);
+      expect(r.currency, 'USD');
+      expect(r.candidates.single.id, 't1');
+      expect(formatMoney(r.candidates.single.amount, r.currency), '\$24.50');
+    });
+
+    test('a receipt nothing could read falls back to its filename', () {
+      final r = PendingReceipt.fromJson({
+        'id': 'd2',
+        'filename': 'IMG_0002.jpg',
+        'match_status': 'no_amount',
+        'ocr_merchant': null,
+        'ocr_amount': null,
+        'ocr_date': null,
+        'ocr_currency': null,
+        'candidates': [],
+      });
+      expect(r.label, 'IMG_0002.jpg');
+      expect(r.amount, isNull);
+      expect(r.matchStatus, 'no_amount');
+      expect(formatMoney(12, 'EUR'), 'EUR 12.00');
+    });
+  });
 }

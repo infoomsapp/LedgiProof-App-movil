@@ -201,6 +201,32 @@ class BudgetVsActual {
   bool get isEmpty => hasNoBudget && lines.isEmpty;
 }
 
+/// "Where do I stand?": owed to you, you owe, cash and this month's profit,
+/// from get_books_snapshot -- the same ledger numbers the web dashboard and
+/// reports show. Bank lines still in For review are not in them yet;
+/// [toReview] says how many.
+class BooksSnapshot {
+  final double owedToYou;
+  final double owedOverdue;
+  final double youOwe;
+  final double youOweOverdue;
+  final double cash;
+  final double monthProfit;
+  final double lastMonthProfit;
+  final int toReview;
+
+  BooksSnapshot.fromJson(Map<String, dynamic> j)
+      : owedToYou = (j['owed_to_you'] as num?)?.toDouble() ?? 0,
+        owedOverdue = (j['owed_overdue'] as num?)?.toDouble() ?? 0,
+        youOwe = (j['you_owe'] as num?)?.toDouble() ?? 0,
+        youOweOverdue = (j['you_owe_overdue'] as num?)?.toDouble() ?? 0,
+        cash = (j['cash'] as num?)?.toDouble() ?? 0,
+        monthProfit = ((j['month'] as Map?)?['profit'] as num?)?.toDouble() ?? 0,
+        lastMonthProfit =
+            ((j['last_month'] as Map?)?['profit'] as num?)?.toDouble() ?? 0,
+        toReview = (j['to_review'] as num?)?.toInt() ?? 0;
+}
+
 class ReportService {
   final _db = Supabase.instance.client;
 
@@ -268,5 +294,16 @@ class ReportService {
       'p_client_id': clientId,
     });
     return BudgetVsActual.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<BooksSnapshot> booksSnapshot({
+    required String orgId,
+    String? clientId,
+  }) async {
+    final data = await _db.rpc('get_books_snapshot', params: {
+      'p_org_id': orgId,
+      'p_client_id': clientId,
+    });
+    return BooksSnapshot.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

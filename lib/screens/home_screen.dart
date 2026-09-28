@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/books_service.dart';
 import '../services/notification_service.dart';
+import '../services/report_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/books_snapshot_card.dart';
 import '../widgets/quick_actions.dart';
 import '../widgets/workspace_switcher.dart';
 import 'notifications_screen.dart';
@@ -29,7 +31,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _books = BooksService();
   final _notifications = NotificationService();
+  final _reports = ReportService();
   late Future<List<SemaphoreTx>> _queue;
+  late Future<BooksSnapshot?> _snapshot;
   int _unread = 0;
   RealtimeChannel? _channel;
 
@@ -37,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _queue = _books.getReviewQueue(widget.workspace.orgId);
+    _snapshot = _loadSnapshot();
     _refreshUnread();
     // The badge is the reason `notifications` had to join the realtime
     // publication: without it a new message only showed up here on a manual
@@ -53,6 +58,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (c != null) _notifications.unsubscribe(c);
     super.dispose();
   }
+
+  // A portal client sees its own books inside the firm's workspace.
+  String? get _clientId =>
+      widget.workspace.isPortalClient ? widget.workspace.portalClientId : null;
+
+  Future<BooksSnapshot?> _loadSnapshot() => _reports
+      .booksSnapshot(orgId: widget.workspace.orgId, clientId: _clientId)
+      .then<BooksSnapshot?>((s) => s)
+      .catchError((_) => null);
 
   Future<void> _refreshUnread() async {
     try {
@@ -88,8 +102,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() { _queue = _books.getReviewQueue(widget.workspace.orgId); });
-          await _queue;
+          setState(() {
+            _queue = _books.getReviewQueue(widget.workspace.orgId);
+            _snapshot = _loadSnapshot();
+          });
+          await Future.wait([_queue, _snapshot]);
         },
         child: FutureBuilder<List<SemaphoreTx>>(
           future: _queue,
@@ -117,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                 ),
+                BooksSnapshotCard(future: _snapshot, clientScope: _clientId != null),
                 const SizedBox(height: 20),
                 // The cards are the person's own: Edit picks up to five and
                 // reorders them (see widgets/quick_actions.dart).

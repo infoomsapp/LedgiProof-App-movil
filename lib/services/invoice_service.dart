@@ -183,21 +183,28 @@ class InvoiceService {
 
   /// Line rows exactly as the web's upsertItems writes them. Discount and tax
   /// are only sent when set, so an untouched line keeps the database defaults.
-  List<Map<String, dynamic>> _itemRows(
-      String invoiceId, String orgId, List<DraftItem> usable) {
+  /// Lines as save_invoice_items() takes them. That RPC replaces the lines
+  /// and recomputes the totals in one transaction -- the old client-side
+  /// delete + insert had no DELETE grant (editing threw) and was not atomic.
+  List<Map<String, dynamic>> _itemPayload(List<DraftItem> usable) {
     return [
-      for (var i = 0; i < usable.length; i++)
+      for (final it in usable)
         {
-          'invoice_id': invoiceId,
-          'org_id': orgId,
-          'sort_order': i,
-          'description': usable[i].description.trim(),
-          'quantity': usable[i].quantity,
-          'unit_price': usable[i].unitPrice,
-          if (usable[i].discountPct > 0) 'discount_pct': usable[i].discountPct,
-          if (usable[i].taxRate > 0) 'tax_rate': usable[i].taxRate,
+          'item_type': 'service',
+          'description': it.description.trim(),
+          'quantity': it.quantity,
+          'unit_price': it.unitPrice,
+          'discount_pct': it.discountPct,
+          'tax_rate': it.taxRate,
         }
     ];
+  }
+
+  Future<void> _saveItems(String invoiceId, List<DraftItem> items) async {
+    await _db.rpc('save_invoice_items', params: {
+      'p_invoice_id': invoiceId,
+      'p_items': _itemPayload(items.where((i) => i.isUsable).toList()),
+    });
   }
 
   /// Creates the invoice as a DRAFT, then its items, then asks the database to
@@ -243,19 +250,14 @@ class InvoiceService {
         .single();
 
     final invoiceId = inserted['id'] as String;
-
-    final usable = items.where((i) => i.isUsable).toList();
-    if (usable.isNotEmpty) {
-      await _db.from('invoice_items').insert(_itemRows(invoiceId, orgId, usable));
-    }
-    await _db.rpc('compute_invoice_totals', params: {'p_invoice_id': invoiceId});
+    await _saveItems(invoiceId, items);
     return invoiceId;
   }
 
   /// Rewrites a DRAFT invoice: its header fields, then its lines, then the
   /// server-side total. Mirrors updateInvoice + upsertItems: the lines are
-  /// deleted and reinserted rather than diffed, which is what the web does and
-  /// what keeps sort_order honest without tracking per-row edits.
+  /// replaced (save_invoice_items, one transaction) rather than diffed, which
+  /// is what the web does and what keeps sort_order honest.
   ///
   /// Draft only, matching the web. Editing an invoice the client has already
   /// received would change a document they are holding; the status check here
@@ -290,13 +292,7 @@ class InvoiceService {
       'client_id': ?clientId,
     }).eq('id', invoiceId);
 
-    await _db.from('invoice_items').delete().eq('invoice_id', invoiceId);
-
-    final usable = items.where((i) => i.isUsable).toList();
-    if (usable.isNotEmpty) {
-      await _db.from('invoice_items').insert(_itemRows(invoiceId, orgId, usable));
-    }
-    await _db.rpc('compute_invoice_totals', params: {'p_invoice_id': invoiceId});
+    await _saveItems(invoiceId, items);
   }
 
   /// Marks the invoice sent and makes sure it carries a public token, which is
@@ -501,7 +497,8 @@ class InvoiceService {
     final res = await _db.functions.invoke('create-checkout-session', body: {
       'type': 'invoice',
       'public_token': publicToken,
-      'success_url': 'https://ledgiproof.com/i/paid',
+      // Back to the invoice itself (there is no /i/paid page).
+      'success_url': 'https://ledgiproof.com/i/$publicToken?paid=1',
       'cancel_url': 'https://ledgiproof.com/i/$publicToken',
     });
     final data = res.data;

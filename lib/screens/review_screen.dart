@@ -124,7 +124,8 @@ class _ReviewInboxState extends State<_ReviewInbox> {
         _choices.removeWhere((id, _) => !ids.contains(id));
         for (final it in queue.items) {
           if (!_choices.containsKey(it.id) && it.suggestedAccountId != null) {
-            _choices[it.id] = Suggestion(it.suggestedAccountId!, it.suggestionSource, it.suggestionConfidence);
+            _choices[it.id] = Suggestion(it.suggestedAccountId!, it.suggestionSource, it.suggestionConfidence,
+                match: it.match);
           }
         }
       });
@@ -179,7 +180,13 @@ class _ReviewInboxState extends State<_ReviewInbox> {
     final payload = [
       for (final id in ids)
         if (_choices[id] != null)
-          {'transaction_id': id, 'account_id': _choices[id]!.accountId, 'source': _choices[id]!.source},
+          {
+            'transaction_id': id,
+            'account_id': _choices[id]!.accountId,
+            'source': _choices[id]!.source,
+            'invoice_id': ?_choices[id]!.match?.invoiceId,
+            'payment_id': ?_choices[id]!.match?.paymentId,
+          },
     ];
     if (payload.isEmpty) return;
     setState(() => _busy.addAll(payload.map((p) => p['transaction_id'] as String)));
@@ -224,16 +231,23 @@ class _ReviewInboxState extends State<_ReviewInbox> {
   }
 
   Future<void> _chooseCategory(ReviewItem it) async {
-    final picked = await showModalBottomSheet<CategoryAccount>(
+    final picked = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (_) => _CategorySheet(categories: _categories, moneyIn: it.moneyIn, selectedId: _choices[it.id]?.accountId),
+      builder: (_) => _CategorySheet(
+        categories: _categories,
+        moneyIn: it.moneyIn,
+        selectedId: _choices[it.id]?.match == null ? _choices[it.id]?.accountId : null,
+        match: it.match,
+      ),
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _choices[it.id] = Suggestion(picked.id, null, null);
+      _choices[it.id] = picked is CategoryAccount
+          ? Suggestion(picked.id, null, null)
+          : Suggestion(it.suggestedAccountId!, it.suggestionSource, it.suggestionConfidence, match: it.match);
       _rowErrors.remove(it.id);
     });
   }
@@ -477,12 +491,16 @@ class _ReviewInboxState extends State<_ReviewInbox> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            account?.label ?? (_aiPending.contains(it.id) ? 'AI is suggesting…' : 'Choose a category…'),
+                            choice?.match?.label ??
+                                account?.label ??
+                                (_aiPending.contains(it.id) ? 'AI is suggesting…' : 'Choose a category…'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12.5, color: account != null ? AppColors.ink : AppColors.inkMuted),
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: account != null || choice?.match != null ? AppColors.ink : AppColors.inkMuted),
                           ),
-                          if (account != null && sourceLabel.isNotEmpty)
+                          if ((account != null || choice?.match != null) && sourceLabel.isNotEmpty)
                             Text(
                               '${choice!.source == 'ai' ? '✦ ' : ''}$sourceLabel'
                               '${choice.confidence != null ? ' · ${choice.confidence}%' : ''}',
@@ -499,7 +517,9 @@ class _ReviewInboxState extends State<_ReviewInbox> {
                 const SizedBox(width: 6),
                 if (_canPost)
                   FilledButton(
-                    onPressed: account == null || isBusy || !(_queue?.hasBankAccount ?? false) ? null : () => _confirm([it.id]),
+                    onPressed: (account == null && choice?.match == null) || isBusy || !(_queue?.hasBankAccount ?? false)
+                        ? null
+                        : () => _confirm([it.id]),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -535,7 +555,11 @@ class _CategorySheet extends StatefulWidget {
   final List<CategoryAccount> categories;
   final bool moneyIn;
   final String? selectedId;
-  const _CategorySheet({required this.categories, required this.moneyIn, this.selectedId});
+
+  /// The row's invoice / recorded-payment match, offered first. Picking it
+  /// pops the match itself instead of a [CategoryAccount].
+  final DepositMatch? match;
+  const _CategorySheet({required this.categories, required this.moneyIn, this.selectedId, this.match});
 
   @override
   State<_CategorySheet> createState() => _CategorySheetState();
@@ -585,6 +609,20 @@ class _CategorySheetState extends State<_CategorySheet> {
                 : ListView(
                     controller: scroll,
                     children: [
+                      if (widget.match != null && q.isEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                          child: Text('MATCHES',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.5)),
+                        ),
+                        ListTile(
+                          dense: true,
+                          leading: Icon(Icons.receipt_long, color: AppColors.cyan, size: 18),
+                          title: Text(widget.match!.label, style: TextStyle(color: AppColors.ink, fontSize: 13)),
+                          trailing: widget.selectedId == null ? Icon(Icons.check, color: AppColors.cyan, size: 18) : null,
+                          onTap: () => Navigator.of(ctx).pop(widget.match),
+                        ),
+                      ],
                       for (final (label, list) in groups)
                         if (list.isNotEmpty) ...[
                           Padding(

@@ -12,6 +12,31 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///                      (bank side implied), marks it blue/verified with the
 ///                      audit hash chain, learns the merchant.
 ///   setRule()       -> set_categorization_rule(): "always put X in Y".
+/// The deposit is exactly an open invoice's balance ("Payment for INV-0007"),
+/// or brings in a payment already recorded on an invoice.
+class DepositMatch {
+  final String? invoiceId;
+  final String? paymentId;
+  final String invoiceNumber;
+  final String? clientName;
+
+  DepositMatch.invoice(Map<String, dynamic> j)
+      : invoiceId = j['invoice_id'] as String,
+        paymentId = null,
+        invoiceNumber = j['invoice_number'] as String,
+        clientName = j['client_name'] as String?;
+
+  DepositMatch.payment(Map<String, dynamic> j)
+      : invoiceId = null,
+        paymentId = j['payment_id'] as String,
+        invoiceNumber = j['invoice_number'] as String,
+        clientName = null;
+
+  String get label => invoiceId != null
+      ? 'Payment for $invoiceNumber${clientName != null ? ' · $clientName' : ''}'
+      : 'Deposit of the payment on $invoiceNumber';
+}
+
 class ReviewItem {
   final String id;
   final String transactionDate;
@@ -25,6 +50,7 @@ class ReviewItem {
   final String? suggestionSource;
   final int? suggestionConfidence;
   final bool hasReceipt;
+  final DepositMatch? match;
 
   ReviewItem.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
@@ -38,7 +64,12 @@ class ReviewItem {
         suggestedAccountId = j['suggested_account_id'] as String?,
         suggestionSource = j['suggestion_source'] as String?,
         suggestionConfidence = (j['suggestion_confidence'] as num?)?.toInt(),
-        hasReceipt = j['has_receipt'] == true;
+        hasReceipt = j['has_receipt'] == true,
+        match = j['invoice_match'] is Map<String, dynamic>
+            ? DepositMatch.invoice(j['invoice_match'] as Map<String, dynamic>)
+            : j['deposit_match'] is Map<String, dynamic>
+                ? DepositMatch.payment(j['deposit_match'] as Map<String, dynamic>)
+                : null;
 
   String get label => merchantName ?? description ?? 'Transaction';
   bool get moneyIn => amount > 0;
@@ -75,7 +106,10 @@ class Suggestion {
   final String accountId;
   final String? source;
   final int? confidence;
-  const Suggestion(this.accountId, this.source, this.confidence);
+
+  /// Set when the suggestion is the row's invoice / recorded-payment match.
+  final DepositMatch? match;
+  const Suggestion(this.accountId, this.source, this.confidence, {this.match});
 }
 
 class RulePrompt {
@@ -113,6 +147,8 @@ String suggestionSourceLabel(String? source) => switch (source) {
       'learned' => 'Learned',
       'vendor' => 'Vendor',
       'merchant' => 'Known merchant',
+      'invoice' => 'Invoice payment',
+      'deposit' => 'Recorded payment',
       'income' => 'Income',
       'ai' => 'AI',
       _ => '',

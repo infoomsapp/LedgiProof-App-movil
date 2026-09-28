@@ -54,6 +54,38 @@ void main() {
     });
   });
 
+  test('deposit matches: an open invoice, or a recorded payment', () {
+    final q = ReviewQueue.fromJson({
+      'items': [
+        {
+          'id': 't1', 'transaction_date': '2026-09-27', 'description': 'ZELLE FROM ZENITH LABS',
+          'amount': 200, 'currency': 'USD', 'semaphore': 'green',
+          'suggested_account_id': 'ar', 'suggestion_source': 'invoice', 'suggestion_confidence': 95,
+          'invoice_match': {'invoice_id': 'i2', 'invoice_number': 'T-002', 'client_name': 'Zenith Labs', 'balance_due': 200},
+          'deposit_match': null,
+        },
+        {
+          'id': 't2', 'transaction_date': '2026-09-27', 'description': 'MOBILE DEPOSIT',
+          'amount': 65, 'currency': 'USD', 'semaphore': 'green',
+          'suggested_account_id': 'und', 'suggestion_source': 'deposit', 'suggestion_confidence': 95,
+          'invoice_match': null,
+          'deposit_match': {'payment_id': 'p1', 'invoice_number': 'T-001', 'payment_date': '2026-09-27', 'method': 'check'},
+        },
+      ],
+      'total': 2,
+      'bank_account': 'b1',
+    });
+    final inv = q.items[0].match!;
+    expect(inv.invoiceId, 'i2');
+    expect(inv.paymentId, isNull);
+    expect(inv.label, 'Payment for T-002 · Zenith Labs');
+    final dep = q.items[1].match!;
+    expect(dep.paymentId, 'p1');
+    expect(dep.invoiceId, isNull);
+    expect(dep.label, 'Deposit of the payment on T-001');
+    expect(suggestionSourceLabel('invoice'), 'Invoice payment');
+  });
+
   test('post result: posted, per-row failures and the rule prompt', () {
     final r = PostResult.fromJson({
       'posted': ['t3'],

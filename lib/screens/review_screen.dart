@@ -517,6 +517,14 @@ class _ReviewInboxState extends State<_ReviewInbox> {
                                 color: choice.source == 'rule' ? AppColors.cyan : AppColors.inkSubtle,
                               ),
                             ),
+                          // Why the Brain suggests it (fixed points, no AI).
+                          if (choice?.accountId == it.suggestedAccountId && it.evidence.isNotEmpty)
+                            Text(
+                              'Why: ${it.evidence.map((e) => e.text).join(' · ')}',
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10, color: AppColors.inkSubtle),
+                            ),
                         ],
                       ),
                     ),

@@ -60,6 +60,41 @@ class DepositMatch {
   }
 }
 
+/// One reason behind a suggestion -- lp_private.suggest_account's evidence
+/// (brain_f2_evidence.sql). Fixed points, no AI. Same words as the web's
+/// "Why?" (review.why in en.ts).
+class BrainEvidence {
+  final String signal;
+  final int points;
+  final String? accountName;
+  final String? merchant;
+  final int? count;
+  final String? category;
+
+  BrainEvidence.fromJson(Map<String, dynamic> j)
+      : signal = (j['signal'] as String?) ?? '',
+        points = (j['points'] as num?)?.toInt() ?? 0,
+        accountName = j['account_name'] as String?,
+        merchant = j['merchant'] as String?,
+        count = (j['count'] as num?)?.toInt(),
+        category = j['category'] as String?;
+
+  String get text {
+    final a = accountName ?? '';
+    return switch (signal) {
+      'rule' => 'Your rule: “$merchant” always goes to $a',
+      'learned' => count == 1 ? '“$merchant” confirmed once in $a' : '“$merchant” confirmed $count times in $a',
+      'vendor' => "This vendor's default account: $a",
+      'merchant' => 'Known merchant: this kind of spending usually goes to $a',
+      'bank_category' => 'The bank classifies it as $category',
+      'income' => 'Money in: first income account ($a)',
+      'agreement' => '$count signals agree',
+      'conflict' => 'Could also be $a — take a look',
+      _ => '',
+    };
+  }
+}
+
 class ReviewItem {
   final String id;
   final String transactionDate;
@@ -72,6 +107,7 @@ class ReviewItem {
   final String? suggestedAccountId;
   final String? suggestionSource;
   final int? suggestionConfidence;
+  final List<BrainEvidence> evidence;
   final bool hasReceipt;
   final DepositMatch? match;
 
@@ -87,6 +123,11 @@ class ReviewItem {
         suggestedAccountId = j['suggested_account_id'] as String?,
         suggestionSource = j['suggestion_source'] as String?,
         suggestionConfidence = (j['suggestion_confidence'] as num?)?.toInt(),
+        evidence = ((j['suggestion_evidence'] as List?) ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(BrainEvidence.fromJson)
+            .where((e) => e.text.isNotEmpty)
+            .toList(),
         hasReceipt = j['has_receipt'] == true,
         match = j['invoice_match'] is Map<String, dynamic>
             ? DepositMatch.invoice(j['invoice_match'] as Map<String, dynamic>)

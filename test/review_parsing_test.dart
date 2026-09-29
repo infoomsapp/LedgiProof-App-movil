@@ -108,6 +108,25 @@ void main() {
     expect(r.rulePrompts.single.clientId, 'c1');
   });
 
+  test('the Brain says why: evidence parsed into the same words as the web', () {
+    final it = ReviewItem.fromJson({
+      'id': 't9', 'transaction_date': '2026-09-29', 'amount': -64.1,
+      'suggested_account_id': 'a1', 'suggestion_source': 'learned', 'suggestion_confidence': 83,
+      'suggestion_evidence': [
+        {'signal': 'learned', 'points': 78, 'merchant': 'verizon', 'count': 1, 'account_name': 'Telephone & Internet'},
+        {'signal': 'merchant', 'points': 60, 'account_name': 'Telephone & Internet'},
+        {'signal': 'agreement', 'points': 5, 'count': 2},
+        {'signal': 'something_new', 'points': 1},
+      ],
+    });
+    expect(it.evidence.map((e) => e.text).toList(), [
+      '“verizon” confirmed once in Telephone & Internet',
+      'Known merchant: this kind of spending usually goes to Telephone & Internet',
+      '2 signals agree',
+    ]);
+    expect(ReviewItem.fromJson({'id': 'x', 'transaction_date': '2026-09-29', 'amount': 1}).evidence, isEmpty);
+  });
+
   test('source labels match the web', () {
     expect(suggestionSourceLabel('merchant'), 'Known merchant');
     // No AI in categorization: an 'ai' source is not a thing any more.

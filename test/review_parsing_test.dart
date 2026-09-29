@@ -110,7 +110,8 @@ void main() {
 
   test('source labels match the web', () {
     expect(suggestionSourceLabel('merchant'), 'Known merchant');
-    expect(suggestionSourceLabel('ai'), 'AI');
+    // No AI in categorization: an 'ai' source is not a thing any more.
+    expect(suggestionSourceLabel('ai'), '');
     expect(suggestionSourceLabel(null), '');
   });
 

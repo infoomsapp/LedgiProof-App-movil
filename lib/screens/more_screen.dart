@@ -9,6 +9,7 @@ import 'bills_screen.dart';
 import 'chat_inbox_screen.dart';
 import 'checklists_screen.dart';
 import 'connections_screen.dart';
+import 'notes_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'timer_screen.dart';
@@ -39,6 +40,15 @@ class MoreScreen extends StatelessWidget {
               label: 'Checklists',
               subtitle: 'Create, work through and schedule',
               onTap: () => _open(context, ChecklistsScreen(workspace: workspace)),
+            ),
+          // Firm notes are internal to the firm's staff (RLS: org members
+          // only), so neither a portal client nor a personal workspace sees it.
+          if (workspace.isFirm && !workspace.isPortalClient)
+            _MoreRow(
+              icon: Icons.sticky_note_2_outlined,
+              label: 'Notes',
+              subtitle: 'Client notes, approvals and reminders',
+              onTap: () => _open(context, NotesScreen(workspace: workspace)),
             ),
           _MoreRow(
             icon: Icons.schedule_outlined,

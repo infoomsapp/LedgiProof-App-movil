@@ -594,9 +594,17 @@ class _CategorySheetState extends State<_CategorySheet> {
     final q = _query.toLowerCase();
     final match = widget.categories.where((c) => q.isEmpty || c.label.toLowerCase().contains(q)).toList();
     final first = widget.moneyIn ? 'income' : 'expense';
+    final second = widget.moneyIn ? 'expense' : 'income';
+    const labels = {
+      'income': 'Income',
+      'expense': 'Expenses',
+      'equity': 'Equity (owner)',
+      'liability': 'Liabilities (loans, cards)',
+      'asset': 'Assets (equipment, deposits)',
+    };
     final groups = [
-      (first == 'income' ? 'Income' : 'Expenses', match.where((c) => c.type == first).toList()),
-      (first == 'income' ? 'Expenses' : 'Income', match.where((c) => c.type != first).toList()),
+      for (final type in [first, second, 'equity', 'liability', 'asset'])
+        (labels[type]!, match.where((c) => c.type == type).toList()),
     ];
 
     return DraggableScrollableSheet(

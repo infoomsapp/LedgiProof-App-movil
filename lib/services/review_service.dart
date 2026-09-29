@@ -230,17 +230,21 @@ class ReviewService {
 
   /// Leaf income/expense accounts of this scope (a heading with children is
   /// never a category), the same filter the web and the posting RPC apply.
+  /// Every leaf account of this scope except the bank/cash accounts (the bank
+  /// side is implied) -- the set post_reviewed_transactions accepts, same as
+  /// the web. Not only income/expense: an owner's contribution is equity, a
+  /// loan payment a liability, equipment an asset.
   Future<List<CategoryAccount>> getCategories(String orgId, String? clientId) async {
     var q = _db
         .from('accounts')
-        .select('id, code, name, type, parent_id')
+        .select('id, code, name, type, parent_id, cash_flow_category')
         .eq('org_id', orgId)
         .eq('is_active', true);
     q = clientId != null ? q.eq('client_id', clientId) : q.isFilter('client_id', null);
     final rows = (await q.order('code')).cast<Map<String, dynamic>>();
     final parents = rows.map((r) => r['parent_id']).whereType<String>().toSet();
     return rows
-        .where((r) => !parents.contains(r['id']) && (r['type'] == 'income' || r['type'] == 'expense'))
+        .where((r) => !parents.contains(r['id']) && !_isCash(r))
         .map((r) => CategoryAccount(
               id: r['id'] as String,
               code: (r['code'] as String?) ?? '',
@@ -248,6 +252,13 @@ class ReviewService {
               type: r['type'] as String,
             ))
         .toList();
+  }
+
+  static bool _isCash(Map<String, dynamic> r) {
+    final name = ((r['name'] as String?) ?? '').toLowerCase();
+    return r['type'] == 'asset' &&
+        (r['cash_flow_category'] == 'cash' || RegExp(r'(checking|cash|bank)').hasMatch(name)) &&
+        !RegExp(r'(undeposited|in transit)').hasMatch(name);
   }
 
   /// AI suggestions are a bonus: any failure just leaves those rows to the user.

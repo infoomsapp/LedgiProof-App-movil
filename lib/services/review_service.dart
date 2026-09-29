@@ -1,13 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// "For review" inbox -- mirrors the web's src/services/review.service.ts,
-/// same RPCs and edge function:
+/// same RPCs:
 ///
 ///   getQueue()      -> get_review_queue(): uncategorized transactions, each
 ///                      with a suggested category (rule / learned / vendor /
 ///                      known merchant / income).
-///   suggestWithAi() -> suggest-categories edge function: fills in the ones
-///                      nothing else could suggest.
 ///   post()          -> post_reviewed_transactions(): posts the balanced entry
 ///                      (bank side implied), marks it blue/verified with the
 ///                      audit hash chain, learns the merchant.
@@ -180,7 +178,6 @@ String suggestionSourceLabel(String? source) => switch (source) {
       'bill' => 'Bill payment',
       'bill_payment' => 'Recorded bill payment',
       'income' => 'Income',
-      'ai' => 'AI',
       _ => '',
     };
 
@@ -259,26 +256,6 @@ class ReviewService {
     return r['type'] == 'asset' &&
         (r['cash_flow_category'] == 'cash' || RegExp(r'(checking|cash|bank)').hasMatch(name)) &&
         !RegExp(r'(undeposited|in transit)').hasMatch(name);
-  }
-
-  /// AI suggestions are a bonus: any failure just leaves those rows to the user.
-  Future<Map<String, Suggestion>> suggestWithAi(String orgId, String? clientId, List<String> ids) async {
-    if (ids.isEmpty) return {};
-    try {
-      final res = await _db.functions.invoke('suggest-categories', body: {
-        'org_id': orgId,
-        'client_id': clientId,
-        'transaction_ids': ids.take(25).toList(),
-      });
-      final list = ((res.data as Map<String, dynamic>?)?['suggestions'] as List?) ?? [];
-      return {
-        for (final s in list.cast<Map<String, dynamic>>())
-          s['transaction_id'] as String:
-              Suggestion(s['account_id'] as String, 'ai', (s['confidence'] as num?)?.toInt()),
-      };
-    } catch (_) {
-      return {};
-    }
   }
 
   Future<PostResult> post(String orgId, List<Map<String, dynamic>> items) async {

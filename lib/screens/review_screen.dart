@@ -55,7 +55,6 @@ class _ReviewInboxState extends State<_ReviewInbox> {
   ReviewQueue? _queue;
   List<CategoryAccount> _categories = [];
   final Map<String, Suggestion> _choices = {};
-  final Set<String> _aiPending = {};
   final Set<String> _busy = {};
   final Map<String, String> _rowErrors = {};
   final List<RulePrompt> _prompts = [];
@@ -132,18 +131,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
           }
         }
       });
-
-      // Whatever nothing else could suggest goes to the AI (up to 25 at once).
-      final blank = queue.items.where((i) => !_choices.containsKey(i.id)).map((i) => i.id).take(25).toList();
-      if (blank.isNotEmpty) {
-        setState(() => _aiPending.addAll(blank));
-        final ai = await _service.suggestWithAi(_orgId, clientId, blank);
-        if (!mounted || clientId != _clientId) return;
-        setState(() {
-          _aiPending.removeAll(blank);
-          ai.forEach((id, s) => _choices.putIfAbsent(id, () => s));
-        });
-      }
+      // What the Brain can't suggest stays blank: the person chooses (no AI).
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -514,7 +502,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
                           Text(
                             choice?.match?.label ??
                                 account?.label ??
-                                (_aiPending.contains(it.id) ? 'AI is suggesting…' : 'Choose a category…'),
+                                'Choose a category…',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -523,8 +511,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
                           ),
                           if ((account != null || choice?.match != null) && sourceLabel.isNotEmpty)
                             Text(
-                              '${choice!.source == 'ai' ? '✦ ' : ''}$sourceLabel'
-                              '${choice.confidence != null ? ' · ${choice.confidence}%' : ''}',
+                              '$sourceLabel${choice!.confidence != null ? ' · ${choice.confidence}%' : ''}',
                               style: TextStyle(
                                 fontSize: 10.5,
                                 color: choice.source == 'rule' ? AppColors.cyan : AppColors.inkSubtle,

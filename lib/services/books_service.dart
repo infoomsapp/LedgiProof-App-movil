@@ -46,7 +46,10 @@ class ClientSummary {
 class BooksService {
   final _db = Supabase.instance.client;
 
-  /// Transactions that need a human decision -- amber or red, newest first.
+  /// Transactions that need a look -- amber (not in the books yet, or
+  /// flagged) or red (a problem), newest first. The colour is derived by the
+  /// database (semaphore_v2.sql): blue verified by a person, green in the
+  /// books and ready to verify, amber needs a look, red problem.
   /// This is the query behind Home's "N need your eyes" number and the
   /// Review tab's full queue; kept as one query so the two stay consistent.
   Future<List<SemaphoreTx>> getReviewQueue(String orgId, {int limit = 50}) async {
@@ -54,27 +57,27 @@ class BooksService {
         .from('transactions')
         .select('id, description, merchant_name, amount, semaphore, transaction_date')
         .eq('org_id', orgId)
+        .eq('is_current', true)
         .inFilter('semaphore', ['amber', 'red'])
         .order('transaction_date', ascending: false)
         .limit(limit);
     return (rows as List).map((r) => SemaphoreTx.fromRow(r as Map<String, dynamic>)).toList();
   }
 
-  /// Marks a transaction reviewed -- moves it to green, the same outcome
-  /// approving it in the web app produces.
-  ///
-  /// Throws when nothing was changed. Row Level Security does not raise an
-  /// error for an UPDATE the caller may not make -- it just matches zero rows --
-  /// so without this check a client (or a read-only role) swiping "approve"
-  /// would be told "Approved" while the transaction stayed exactly as it was.
-  Future<void> approveTransaction(String transactionId) async {
-    final updated = await _db
-        .from('transactions')
-        .update({'semaphore': 'green'})
-        .eq('id', transactionId)
-        .select('id');
-    if ((updated as List).isEmpty) {
-      throw StateError('Only your accountant can review this transaction.');
+  /// Verifies a transaction that is already in the books (green -> blue),
+  /// through the same verify_transactions() the web uses. The database checks
+  /// the role, refuses one that is not categorized yet (LV005), records who
+  /// verified it and writes the audit entry. The colour is never written from
+  /// here -- a direct UPDATE of `semaphore` would simply be recomputed.
+  Future<void> verifyTransaction(String orgId, String transactionId) async {
+    final data = await _db.rpc('verify_transactions', params: {
+      'p_org_id': orgId,
+      'p_transaction_ids': [transactionId],
+    });
+    final failed = ((data as Map?)?['failed'] as List?) ?? const [];
+    if (failed.isNotEmpty) {
+      final f = Map<String, dynamic>.from(failed.first as Map);
+      throw StateError((f['error'] as String?) ?? 'Could not verify this transaction.');
     }
   }
 

@@ -199,6 +199,7 @@ class _TransactionsScreenState extends State<TransactionsScreen>
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
       builder: (_) => _TxSheet(
+        orgId: widget.workspace.orgId,
         tx: tx,
         canReview: _canReview,
         canAsk: !widget.workspace.isPortalClient,
@@ -493,11 +494,13 @@ class _TxRow extends StatelessWidget {
 }
 
 class _TxSheet extends StatefulWidget {
+  final String orgId;
   final TxItem tx;
   final bool canReview;
   final bool canAsk;
   final BooksService books;
   const _TxSheet({
+    required this.orgId,
     required this.tx,
     required this.canReview,
     required this.canAsk,
@@ -511,23 +514,25 @@ class _TxSheet extends StatefulWidget {
 class _TxSheetState extends State<_TxSheet> {
   bool _busy = false;
 
+  // LedgiProof's rule: blue verified by a person, green in the books and
+  // ready to verify, amber needs a look, red a problem.
   String get _meaning => switch (widget.tx.semaphore) {
-        'blue' => 'Certified',
-        'green' => 'Reviewed',
-        'amber' => 'Needs review',
-        _ => 'Unusual — needs review',
+        'blue' => 'Verified',
+        'green' => 'Ready to verify',
+        'amber' => 'Needs a look',
+        _ => 'Problem — needs a look',
       };
 
-  Future<void> _approve() async {
+  Future<void> _verify() async {
     setState(() => _busy = true);
     try {
-      await widget.books.approveTransaction(widget.tx.id);
+      await widget.books.verifyTransaction(widget.orgId, widget.tx.id);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not update: ${friendlyError(e)}')),
+        SnackBar(content: Text('Could not verify: ${friendlyError(e)}')),
       );
     }
   }
@@ -535,7 +540,8 @@ class _TxSheetState extends State<_TxSheet> {
   @override
   Widget build(BuildContext context) {
     final tx = widget.tx;
-    final needsReview = tx.semaphore == 'amber' || tx.semaphore == 'red';
+    final readyToVerify = tx.semaphore == 'green';
+    final needsLook = tx.semaphore == 'amber' || tx.semaphore == 'red';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       child: Column(
@@ -580,15 +586,23 @@ class _TxSheetState extends State<_TxSheet> {
                 style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted)),
           ],
           const SizedBox(height: 16),
-          if (widget.canReview && needsReview)
+          if (widget.canReview && needsLook)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Categorize it in Review to put it in the books; then it can be verified.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
+              ),
+            ),
+          if (widget.canReview && readyToVerify)
             FilledButton.icon(
-              onPressed: _busy ? null : _approve,
+              onPressed: _busy ? null : _verify,
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               icon: const Icon(Icons.check, size: 18),
-              label: const Text('Mark reviewed',
+              label: const Text('Verify',
                   style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           if (widget.canAsk)

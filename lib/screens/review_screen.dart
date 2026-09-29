@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../utils/errors.dart';
 import '../widgets/client_picker_sheet.dart';
 import '../widgets/pending_receipts_section.dart';
+import '../widgets/verify_section.dart';
 import 'transaction_chat_screen.dart';
 
 /// The Review tab.
@@ -281,7 +282,7 @@ class _ReviewInboxState extends State<_ReviewInbox> {
             Padding(
               padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
               child: Text(
-                'Confirm in one tap. What you confirm turns blue — verified — and LedgiProof learns it for next time.',
+                'Confirm in one tap. What you confirm turns blue — verified — and LedgiProof learns it: once a merchant is confirmed to the same account three times, it is categorized by itself.',
                 style: TextStyle(fontSize: 12, color: AppColors.inkMuted, height: 1.4),
               ),
             ),
@@ -309,6 +310,13 @@ class _ReviewInboxState extends State<_ReviewInbox> {
               canWrite: _canPost,
               refreshToken: _receiptsRefresh,
               onExpenseCreated: () => _load(quiet: true),
+            ),
+            VerifySection(
+              orgId: _orgId,
+              clientId: _clientId,
+              canWrite: _canPost,
+              refreshToken: _receiptsRefresh,
+              onChanged: () => _load(quiet: true),
             ),
             if (_loading && q == null)
               const Padding(padding: EdgeInsets.only(top: 80), child: Center(child: CircularProgressIndicator()))

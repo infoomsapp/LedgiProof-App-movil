@@ -174,6 +174,7 @@ String suggestionSourceLabel(String? source) => switch (source) {
       'learned' => 'Learned',
       'vendor' => 'Vendor',
       'merchant' => 'Known merchant',
+      'bank_category' => "Bank's category",
       'invoice' => 'Invoice payment',
       'deposit' => 'Recorded payment',
       'bill' => 'Bill payment',
@@ -182,6 +183,38 @@ String suggestionSourceLabel(String? source) => switch (source) {
       'ai' => 'AI',
       _ => '',
     };
+
+/// Already in the books, not verified yet (green = ready, or amber when a
+/// rule flagged it). Same rows as the web's VerifyQueue, from
+/// get_verification_queue().
+class VerificationItem {
+  final String id;
+  final String date;
+  final String? description;
+  final String? merchantName;
+  final double amount;
+  final String currency;
+  final String semaphore;
+  final String? categoryName;
+  final bool auto;
+  final String? source;
+  final String? matchedTo;
+
+  VerificationItem.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        date = (j['transaction_date'] as String?) ?? '',
+        description = j['description'] as String?,
+        merchantName = j['merchant_name'] as String?,
+        amount = (j['amount'] as num?)?.toDouble() ?? 0,
+        currency = (j['currency'] as String?) ?? 'USD',
+        semaphore = (j['semaphore'] as String?) ?? 'green',
+        categoryName = j['category_account_name'] as String?,
+        auto = (j['auto'] as bool?) ?? false,
+        source = j['source'] as String?,
+        matchedTo = j['matched_to'] as String?;
+
+  String get title => merchantName ?? description ?? 'Transaction';
+}
 
 class ReviewService {
   final _db = Supabase.instance.client;
@@ -252,6 +285,41 @@ class ReviewService {
       'p_merchant_key': p.merchantKey,
       'p_account_id': p.accountId,
       'p_is_rule': true,
+    });
+  }
+
+  // ── Verify: green (ready) -> blue (verified) ──────────────────────────────
+
+  Future<List<VerificationItem>> getVerificationQueue(String orgId, String? clientId) async {
+    final data = await _db.rpc('get_verification_queue', params: {
+      'p_org_id': orgId,
+      'p_client_id': clientId,
+    });
+    return (((data as Map)['items'] as List?) ?? [])
+        .map((e) => VerificationItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// Throws a StateError with the database's reason when it refuses one
+  /// (for example LV005: not categorized yet).
+  Future<void> verify(String orgId, String transactionId) async {
+    final data = await _db.rpc('verify_transactions', params: {
+      'p_org_id': orgId,
+      'p_transaction_ids': [transactionId],
+    });
+    final failed = ((data as Map?)?['failed'] as List?) ?? const [];
+    if (failed.isNotEmpty) {
+      final f = Map<String, dynamic>.from(failed.first as Map);
+      throw StateError((f['error'] as String?) ?? 'Could not verify this transaction.');
+    }
+  }
+
+  /// Takes the category off: back to For review, and the merchant goes back
+  /// to "ask me".
+  Future<void> uncategorize(String orgId, String transactionId) async {
+    await _db.rpc('uncategorize_transaction', params: {
+      'p_org_id': orgId,
+      'p_transaction_id': transactionId,
     });
   }
 }

@@ -184,7 +184,7 @@ class WorkspaceService {
 
     final profile = await _db
         .from('profiles')
-        .select('system_role, account_type')
+        .select('system_role, account_type, user_type')
         .eq('id', userId)
         .maybeSingle();
 
@@ -220,7 +220,7 @@ class WorkspaceService {
       // RPC the web uses, and the same profiles.client_id sync the web's
       // fixed accept flow now performs server-side -- this client just
       // needs the mobile side to actually ask.
-      return _loadPortalClientScope(userId);
+      return _loadPortalClientScope(userId, isPortalUser: profile?['user_type'] == 'client_user');
     }
 
     // Stable order so the picker never reshuffles: firm, personal, client.
@@ -270,14 +270,25 @@ class WorkspaceService {
     await _db.rpc('switch_active_client_portal_membership', params: {'p_client_id': clientId});
   }
 
-  Future<WorkspaceScope?> _loadPortalClientScope(String userId) async {
+  Future<WorkspaceScope?> _loadPortalClientScope(String userId, {bool isPortalUser = false}) async {
     List<ClientPortalMembership> memberships;
     try {
       memberships = await _getClientPortalMemberships();
     } catch (_) {
       return null;
     }
-    if (memberships.isEmpty) return null;
+    if (memberships.isEmpty) {
+      // The firm deactivated this client (or revoked the contact): say so,
+      // like the web's PortalAccessEnded page, instead of a generic error.
+      final rows = await _db.rpc('get_my_suspended_portal_access');
+      final list = (rows as List?) ?? const [];
+      if (list.isNotEmpty) {
+        final r = Map<String, dynamic>.from(list.first as Map);
+        throw PortalAccessEnded(firmName: r['org_name'] as String?, clientName: r['client_name'] as String?);
+      }
+      if (isPortalUser) throw const PortalAccessEnded();
+      return null;
+    }
 
     // Matches on membership id because that is what rememberWorkspace stored
     // for a portal workspace (Workspace.rememberKey). It used to compare the
@@ -362,4 +373,13 @@ class WorkspaceService {
     final scope = await loadScope();
     return scope?.active;
   }
+}
+
+/// Thrown by [WorkspaceService.loadScope] when a portal client has no active
+/// access left -- the firm deactivated their client account (TaxDome shows
+/// "Your account was deactivated" in the same situation).
+class PortalAccessEnded implements Exception {
+  final String? firmName;
+  final String? clientName;
+  const PortalAccessEnded({this.firmName, this.clientName});
 }

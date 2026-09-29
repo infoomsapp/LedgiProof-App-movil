@@ -170,6 +170,10 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        final ended = snap.error;
+        if (ended is PortalAccessEnded) {
+          return _PortalAccessEndedScreen(ended: ended);
+        }
         if (snap.hasError || snap.data == null) {
           return Scaffold(
             body: Center(
@@ -208,6 +212,47 @@ class _WorkspaceLoaderState extends State<_WorkspaceLoader> {
           ),
         );
       },
+    );
+  }
+}
+
+class _PortalAccessEndedScreen extends StatelessWidget {
+  const _PortalAccessEndedScreen({required this.ended});
+  final PortalAccessEnded ended;
+
+  @override
+  Widget build(BuildContext context) {
+    final firm = ended.firmName;
+    final client = ended.clientName;
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.lock_outline, color: AppColors.inkMuted, size: 36),
+              const SizedBox(height: 12),
+              Text('Your account was deactivated',
+                  style: TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                firm != null && client != null
+                    ? '$firm deactivated the $client account, so the portal is closed for now. '
+                        'Contact them if you need access again.'
+                    : 'Your access to this client portal has ended. Contact your accountant if you need it back.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.inkMuted, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => Supabase.instance.client.auth.signOut(),
+                child: const Text('Sign out'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

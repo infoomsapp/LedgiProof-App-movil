@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/books_service.dart';
+import '../services/review_service.dart';
 import '../services/transactions_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
@@ -523,6 +524,42 @@ class _TxSheetState extends State<_TxSheet> {
         _ => 'Problem — needs a look',
       };
 
+  /// Same uncategorize_transaction() as the web's "Change category": the
+  /// lines are reversed (audited), the verification goes with them and the
+  /// transaction is back in Review. The database refuses a reconciled one, one
+  /// that settles an invoice or bill, or one in a closed month -- the message
+  /// is shown as it comes.
+  Future<void> _changeCategory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Change category?'),
+        content: const Text(
+            'Its journal lines are reversed, it goes back to Review, and LedgiProof will ask again about this merchant.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Change')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await ReviewService().uncategorize(widget.orgId, widget.tx.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Category removed — choose the new one in Review.')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not change it: ${friendlyError(e)}')),
+      );
+    }
+  }
+
   Future<void> _verify() async {
     setState(() => _busy = true);
     try {
@@ -541,6 +578,7 @@ class _TxSheetState extends State<_TxSheet> {
   Widget build(BuildContext context) {
     final tx = widget.tx;
     final readyToVerify = tx.semaphore == 'green';
+    final categorized = tx.semaphore == 'green' || tx.semaphore == 'blue';
     final needsLook = tx.semaphore == 'amber' || tx.semaphore == 'red';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -604,6 +642,12 @@ class _TxSheetState extends State<_TxSheet> {
               icon: const Icon(Icons.check, size: 18),
               label: const Text('Verify',
                   style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          if (widget.canReview && categorized)
+            TextButton.icon(
+              onPressed: _busy ? null : _changeCategory,
+              icon: const Icon(Icons.edit_outlined, size: 17),
+              label: const Text('Change category'),
             ),
           if (widget.canAsk)
             TextButton.icon(

@@ -121,14 +121,14 @@ void main() {
     });
     expect(it.evidence.map((e) => e.text).toList(), [
       '“verizon” confirmed once in Telephone & Internet',
-      'Known merchant: this kind of spending usually goes to Telephone & Internet',
+      'Common merchant: spending at stores like this usually goes to Telephone & Internet',
       '2 signals agree',
     ]);
     expect(ReviewItem.fromJson({'id': 'x', 'transaction_date': '2026-09-29', 'amount': 1}).evidence, isEmpty);
   });
 
   test('source labels match the web', () {
-    expect(suggestionSourceLabel('merchant'), 'Known merchant');
+    expect(suggestionSourceLabel('merchant'), 'Common merchant');
     // No AI in categorization: an 'ai' source is not a thing any more.
     expect(suggestionSourceLabel('ai'), '');
     expect(suggestionSourceLabel(null), '');

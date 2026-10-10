@@ -74,6 +74,9 @@ class BrainEvidence {
   final int misses;
   final num? min;
   final num? max;
+  final String? date;
+  final num? amount;
+  final String? detail;
 
   BrainEvidence.fromJson(Map<String, dynamic> j)
       : signal = (j['signal'] as String?) ?? '',
@@ -85,7 +88,10 @@ class BrainEvidence {
         hits = (j['hits'] as num?)?.toInt() ?? 0,
         misses = (j['misses'] as num?)?.toInt() ?? 0,
         min = j['min'] as num?,
-        max = j['max'] as num?;
+        max = j['max'] as num?,
+        date = j['date'] as String?,
+        amount = j['amount'] as num?,
+        detail = j['detail'] as String?;
 
   static String _usd(num? n) => n == null ? '' : '\$${n.toStringAsFixed(2)}';
 
@@ -104,6 +110,8 @@ class BrainEvidence {
       'not_graduated' => 'Confirmed ${count ?? 0} of the 3 times needed before LedgiProof posts it by itself',
       'precision' => 'Corrected in the last 90 days (right $hits of ${hits + misses} times), so it asks',
       'amount_range' => 'Unusual amount for this merchant (usually ${_usd(min)} to ${_usd(max)})',
+      // self_transfers.sql -- the server's sentence already says which way
+      'transfer' => '${detail ?? 'Matches a line in $a'}: a move between your own accounts',
       _ => '',
     };
   }

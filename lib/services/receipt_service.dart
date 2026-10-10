@@ -48,7 +48,6 @@ class OcrResult {
   final String? merchantName;
   final double? totalAmount;
   final String? date;
-  final String? category;
   final String currency;
   final int confidence;
 
@@ -60,7 +59,6 @@ class OcrResult {
         merchantName = json['merchant_name'] as String?,
         totalAmount = (json['total_amount'] as num?)?.toDouble(),
         date = json['date'] as String?,
-        category = json['category'] as String?,
         currency = (json['currency'] as String?) ?? 'USD',
         confidence = (json['confidence'] as num?)?.toInt() ?? 0;
 

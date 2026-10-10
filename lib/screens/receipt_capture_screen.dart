@@ -251,7 +251,6 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           _field('Merchant', _merchant ?? 'Tap to enter'),
           _field('Amount', _amount != null ? formatMoney(_amount!, _currency) : 'Tap to enter'),
           _field('Date', _date ?? 'Tap to enter'),
-          if (r.category != null) _field('Category', r.category!.replaceAll('_', ' '), editable: false),
           if (_saving) const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: LinearProgressIndicator()),
           const SizedBox(height: 8),
           if (_match != null) Flexible(child: SingleChildScrollView(child: _buildMatch(_match!))),

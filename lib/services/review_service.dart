@@ -70,6 +70,10 @@ class BrainEvidence {
   final String? merchant;
   final int? count;
   final String? category;
+  final int hits;
+  final int misses;
+  final num? min;
+  final num? max;
 
   BrainEvidence.fromJson(Map<String, dynamic> j)
       : signal = (j['signal'] as String?) ?? '',
@@ -77,7 +81,13 @@ class BrainEvidence {
         accountName = j['account_name'] as String?,
         merchant = j['merchant'] as String?,
         count = (j['count'] as num?)?.toInt(),
-        category = j['category'] as String?;
+        category = j['category'] as String?,
+        hits = (j['hits'] as num?)?.toInt() ?? 0,
+        misses = (j['misses'] as num?)?.toInt() ?? 0,
+        min = j['min'] as num?,
+        max = j['max'] as num?;
+
+  static String _usd(num? n) => n == null ? '' : '\$${n.toStringAsFixed(2)}';
 
   String get text {
     final a = accountName ?? '';
@@ -90,6 +100,10 @@ class BrainEvidence {
       'income' => 'Money in: first income account ($a)',
       'agreement' => '$count signals agree',
       'conflict' => 'Could also be $a — take a look',
+      // F3 (brain_f3_measured.sql): why a learned merchant asks instead of posting by itself
+      'not_graduated' => 'Confirmed ${count ?? 0} of the 3 times needed before LedgiProof posts it by itself',
+      'precision' => 'Corrected in the last 90 days (right $hits of ${hits + misses} times), so it asks',
+      'amount_range' => 'Unusual amount for this merchant (usually ${_usd(min)} to ${_usd(max)})',
       _ => '',
     };
   }

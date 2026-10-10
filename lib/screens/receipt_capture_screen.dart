@@ -47,6 +47,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   String? _date;
   String _currency = 'USD';
   ReceiptMatch? _match;
+  // What didn't add up in the reading (OCR plan R1); cleared once the user
+  // corrects it -- a person checked it.
+  List<String> _issues = const [];
 
   Future<void> _capture(ImageSource source) async {
     final XFile? picked = await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
@@ -73,6 +76,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         _date = result.date;
         _currency = result.currency.toUpperCase();
         _match = result.match;
+        _issues = result.issues;
         _stage = _Stage.done;
       });
     } catch (e) {
@@ -109,6 +113,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         _date = fields.date;
         _currency = fields.currency;
         _match = m;
+        _issues = const [];
       });
     } catch (e) {
       if (!mounted) return;
@@ -251,6 +256,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           _field('Merchant', _merchant ?? 'Tap to enter'),
           _field('Amount', _amount != null ? formatMoney(_amount!, _currency) : 'Tap to enter'),
           _field('Date', _date ?? 'Tap to enter'),
+          if (_issues.isNotEmpty) _buildIssues(),
           if (_saving) const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: LinearProgressIndicator()),
           const SizedBox(height: 8),
           if (_match != null) Flexible(child: SingleChildScrollView(child: _buildMatch(_match!))),
@@ -325,6 +331,27 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   }
 
   /// Tapping a field corrects what was read -- until the receipt is linked.
+  Widget _buildIssues() {
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppColors.amberBg, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Check this receipt before it is linked',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.amber)),
+          const SizedBox(height: 4),
+          for (final i in _issues)
+            Text('• ${ocrIssueText(i)}', style: TextStyle(fontSize: 12.5, color: AppColors.ink, height: 1.4)),
+          const SizedBox(height: 4),
+          Text("It waits for you instead of linking by itself. Tap a field to fix what was read.",
+              style: TextStyle(fontSize: 11.5, color: AppColors.inkMuted, height: 1.4)),
+        ],
+      ),
+    );
+  }
+
   Widget _field(String label, String value, {bool editable = true}) {
     final canEdit = editable && _linkedId == null && _match?.status != 'matched' && !_saving;
     return Padding(

@@ -50,6 +50,9 @@ class OcrResult {
   final String? date;
   final String currency;
   final int confidence;
+  /// Checks the reading failed (OCR plan R1). Any issue: a person confirms
+  /// the link -- the receipt never links by itself.
+  final List<String> issues;
 
   OcrResult.fromJson(Map<String, dynamic> json)
       : documentId = json['document_id'] as String,
@@ -60,10 +63,27 @@ class OcrResult {
         totalAmount = (json['total_amount'] as num?)?.toDouble(),
         date = json['date'] as String?,
         currency = (json['currency'] as String?) ?? 'USD',
-        confidence = (json['confidence'] as num?)?.toInt() ?? 0;
+        confidence = (json['confidence'] as num?)?.toInt() ?? 0,
+        issues = ((json['issues'] as List?) ?? []).map((e) => e.toString()).toList();
 
   bool get hasData => merchantName != null || totalAmount != null || date != null;
 }
+
+/// What each OCR check means (supabase/functions/ocr-receipt/validate.ts in
+/// the web repo) -- same wording as the web.
+String ocrIssueText(String issue) => switch (issue) {
+      'no_text' => "The receipt's text couldn't be read",
+      'low_confidence' => 'The photo was hard to read',
+      'total_not_positive' => 'The total is zero or negative',
+      'total_not_in_text' => "The total isn't written on the receipt",
+      'tax_over_total' => 'The tax is larger than the total',
+      'date_invalid' => "The date isn't a real date",
+      'future_date' => 'The date is in the future',
+      'date_not_in_text' => "The date isn't written on the receipt",
+      'merchant_not_in_text' => "The store name isn't written on the receipt",
+      'lines_mismatch' => "The items don't add up to the total",
+      _ => issue,
+    };
 
 /// '$12.50' for USD, 'EUR 12.50' otherwise -- same as the review inbox rows.
 String formatMoney(double amount, String? currency) {
@@ -90,6 +110,7 @@ class PendingReceipt {
   final double? amount;
   final String? date;
   final String currency;
+  final List<String> issues;
   final List<MatchTx> candidates;
 
   PendingReceipt.fromJson(Map<String, dynamic> j)
@@ -100,6 +121,7 @@ class PendingReceipt {
         amount = (j['ocr_amount'] as num?)?.toDouble(),
         date = j['ocr_date'] as String?,
         currency = ((j['ocr_currency'] as String?) ?? 'USD').toUpperCase(),
+        issues = ((j['ocr_issues'] as List?) ?? []).map((e) => e.toString()).toList(),
         candidates = ((j['candidates'] as List?) ?? [])
             .map((e) => MatchTx.fromJson(e as Map<String, dynamic>))
             .toList();

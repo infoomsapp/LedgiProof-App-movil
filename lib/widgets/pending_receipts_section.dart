@@ -189,6 +189,12 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
               r.matchStatus == 'no_amount' ? "${r.date ?? 'No date'} · couldn't read a total" : (r.date ?? 'No date'),
               style: TextStyle(fontSize: 11, color: r.matchStatus == 'no_amount' ? AppColors.amber : AppColors.inkSubtle),
             ),
+            if (r.issues.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text('⚠ ${r.issues.map(ocrIssueText).join(' · ')}',
+                    style: TextStyle(fontSize: 11, color: AppColors.amber, height: 1.35)),
+              ),
             if (r.candidates.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(

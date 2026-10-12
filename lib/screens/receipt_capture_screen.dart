@@ -157,7 +157,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       body: switch (_stage) {
         _Stage.pick => _buildPick(),
         _Stage.uploading => _buildBusy('Uploading…'),
-        _Stage.extracting => _buildBusy('Reading receipt…'),
+        _Stage.extracting => _buildBusy('Saving receipt…'),
         _Stage.done => _buildResult(),
         _Stage.error => _buildError(),
       },
@@ -243,7 +243,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
               const SizedBox(width: 8),
               Text('Receipt saved', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
               const Spacer(),
-              Container(
+              if (r.read) Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                 decoration: BoxDecoration(color: confBg, borderRadius: BorderRadius.circular(100)),
                 child: Text('${r.confidence}% confident', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: confColor)),
@@ -254,7 +254,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           if (_merchant == null && _amount == null && _date == null)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text("Couldn't read this one clearly — enter the total to match it with your bank.",
+              child: Text(r.read
+                  ? "Couldn't read this one clearly — enter the total to match it with your bank."
+                  : "Tap Amount and type the total — we'll find the charge in your bank.",
                   style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
             ),
           _field('Merchant', _merchant ?? 'Tap to enter'),
@@ -324,7 +326,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         );
       case 'no_amount':
         return box(AppColors.amberBg,
-            Text("We couldn't read a total. Tap Amount to enter it and we'll look for the bank transaction.", style: muted));
+            Text("Waiting for its total. Tap Amount to enter it and we'll look for the bank transaction.", style: muted));
       default:
         return box(
           AppColors.surface,

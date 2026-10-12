@@ -71,6 +71,9 @@ class ReceiptMatch {
 
 class OcrResult {
   final String documentId;
+  /// False when nothing was read (no external engines; the native reader is
+  /// coming) -- the person types the total.
+  final bool read;
   /// Null when matching failed server-side; the OCR fields are still valid.
   final ReceiptMatch? match;
   final String? merchantName;
@@ -84,6 +87,7 @@ class OcrResult {
 
   OcrResult.fromJson(Map<String, dynamic> json)
       : documentId = json['document_id'] as String,
+        read = (json['read'] as bool?) ?? true,
         match = json['match'] is Map<String, dynamic>
             ? ReceiptMatch.fromJson(json['match'] as Map<String, dynamic>)
             : null,

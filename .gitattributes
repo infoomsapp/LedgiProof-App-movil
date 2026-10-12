@@ -1,0 +1,4 @@
+# Model dictionary: one character per line, read byte-exact by the
+# receipt reader -- never convert its line endings.
+assets/ocr/rec_dict.txt -text
+assets/ocr/*.onnx binary

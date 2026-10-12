@@ -66,21 +66,25 @@ class ReceiptReader {
     final boxes = sameAngleAsReceipt(found);
 
     // 3. What each box says.
+    // All lines straightened in one pass off the UI thread (the photo is
+    // copied to the isolate once, not once per line).
+    final rgb = input.rgb, w = input.w, h = input.h;
+    final recInputs = await Isolate.run(() => [for (final b in boxes) prepareRec(rgb, w, h, b)]);
     final lines = <ReadLine>[];
-    for (final b in boxes) {
-      final rgb = input.rgb, w = input.w, h = input.h;
-      final rec = await Isolate.run(() => prepareRec(rgb, w, h, b));
+    for (var i = 0; i < boxes.length; i++) {
+      final rec = recInputs[i];
       final recIn = await OrtValue.fromList(rec.tensor, [1, 3, 48, rec.width]);
+      // The model returns only the best class and its probability per step.
       final recOut = await m.rec.run({m.rec.inputNames.first: recIn});
-      final v = recOut[m.rec.outputNames.first]!;
-      final shape = v.shape; // [1, steps, classes]
-      final out = (await v.asFlattenedList()).cast<num>();
+      final bestValue = recOut['best_index']!, probValue = recOut['best_prob']!;
+      final best = (await bestValue.asFlattenedList()).map((e) => (e as num).toInt()).toList();
+      final probs = (await probValue.asFlattenedList()).cast<num>();
       await recIn.dispose();
-      await v.dispose();
-      final chars = m.chars;
-      final decoded = await Isolate.run(() => ctcDecode(out, shape[1], shape[2], chars));
+      await bestValue.dispose();
+      await probValue.dispose();
+      final decoded = ctcDecode(best, probs, m.chars);
       if (decoded.text.trim().isNotEmpty) {
-        lines.add(ReadLine(decoded.text, (decoded.score * 1000).round() / 1000, b.corners));
+        lines.add(ReadLine(decoded.text, (decoded.score * 1000).round() / 1000, boxes[i].corners));
       }
     }
     return lines;

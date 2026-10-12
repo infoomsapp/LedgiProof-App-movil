@@ -39,8 +39,8 @@ void main() {
       final meta = File('${d.path}/boxes.txt').readAsStringSync().split('\n');
       final out = StringBuffer();
       for (var i = 0; i < meta.length; i++) {
-        final shape = File('${d.path}/rec_out_$i.shape').readAsStringSync().split(' ').map(int.parse).toList();
-        final r = ctcDecode(readF('rec_out_$i.f32'), shape[1], shape[2], chars);
+        final best = File('${d.path}/rec_best_$i.i32').readAsBytesSync().buffer.asInt32List();
+        final r = ctcDecode(best, readF('rec_prob_$i.f32'), chars);
         out.writeln('${r.text}\t${r.score.toStringAsFixed(3)}\t${meta[i]}');
       }
       File('${d.path}/result.txt').writeAsStringSync(out.toString());

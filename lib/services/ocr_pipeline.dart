@@ -14,7 +14,7 @@ import 'package:image/image.dart' as img;
 ///                post-process: threshold 0.3, region score 0.6, unclip 1.5)
 ///   prepareRec   one box, read straight along its tilt -> recognizer input
 ///                (height 48, BGR, (x/255-.5)/.5)
-///   ctcDecode    recognizer output -> text + score (greedy CTC)
+///   ctcDecode    best class per step -> text + score (greedy CTC)
 ///
 /// Checked against the Python reference (same models, same numbers) before
 /// it shipped.
@@ -212,27 +212,21 @@ RecInput prepareRec(Uint8List rgb, int w, int h, TextBox b) {
   return RecInput(t, width);
 }
 
-/// Greedy CTC: best class per step, drop blanks (0) and repeats. [chars]
-/// is the model's dictionary; index i+1 is chars[i], the last index a space.
-({String text, double score}) ctcDecode(List<num> out, int steps, int classes, List<String> chars) {
+/// Greedy CTC over the recognizer's best class per step (assets/ocr/
+/// rec.onnx ends in ArgMax/ReduceMax, so only these two short lists leave
+/// ONNX Runtime): drop blanks (0) and repeats. [chars] is the model's
+/// dictionary; index i+1 is chars[i], the last index a space.
+({String text, double score}) ctcDecode(List<int> best, List<num> prob, List<String> chars) {
   final sb = StringBuffer();
   var sum = 0.0, n = 0, prev = -1;
-  for (var t = 0; t < steps; t++) {
-    var best = 0;
-    var bestP = out[t * classes].toDouble();
-    for (var c = 1; c < classes; c++) {
-      final p = out[t * classes + c].toDouble();
-      if (p > bestP) {
-        bestP = p;
-        best = c;
-      }
-    }
-    if (best != 0 && best != prev) {
-      sb.write(best - 1 < chars.length ? chars[best - 1] : ' ');
-      sum += bestP;
+  for (var t = 0; t < best.length; t++) {
+    final k = best[t];
+    if (k != 0 && k != prev) {
+      sb.write(k - 1 < chars.length ? chars[k - 1] : ' ');
+      sum += prob[t].toDouble();
       n++;
     }
-    prev = best;
+    prev = k;
   }
   return (text: sb.toString(), score: n == 0 ? 0.0 : sum / n);
 }

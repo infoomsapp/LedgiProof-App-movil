@@ -1,7 +1,7 @@
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart' show compute, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
@@ -131,32 +131,19 @@ class _ReceiptCameraScreenState extends State<ReceiptCameraScreen> with WidgetsB
       final dir = (await getTemporaryDirectory()).path;
       final out = '$dir/receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
       // Upright, at most 2400 px, JPEG 88 -- sharp enough to read, small
-      // enough to upload.
-      await Isolate.run(() => _shrink(shot.path, out));
+      // enough to upload. compute() sends only the two paths: a closure
+      // made in this method would share its context with the setState
+      // closures and try to send the whole screen (camera controller
+      // included) to the isolate -- it can't, and every photo failed.
+      await compute(_shrinkPhoto, [shot.path, out]);
       if (mounted) Navigator.of(context).pop(out);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[receipt-camera] $e');
       if (mounted) {
         setState(() => _taking = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't take the photo. Try again.")));
       }
     }
-  }
-
-  static void _shrink(String from, String to) {
-    var photo = img.decodeImage(File(from).readAsBytesSync());
-    if (photo == null) throw const FormatException('Not an image');
-    photo = img.bakeOrientation(photo);
-    const maxSide = 2400;
-    final longSide = photo.width > photo.height ? photo.width : photo.height;
-    if (longSide > maxSide) {
-      final s = maxSide / longSide;
-      photo = img.copyResize(photo,
-          width: (photo.width * s).round(), height: (photo.height * s).round(), interpolation: img.Interpolation.average);
-    }
-    File(to).writeAsBytesSync(img.encodeJpg(photo, quality: 88));
-    try {
-      File(from).deleteSync();
-    } catch (_) {}
   }
 
   @override
@@ -312,4 +299,25 @@ class _FocusRing extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Runs in a background isolate (compute): [from, to] photo paths. The
+/// photo comes out upright, at most 2400 px, JPEG 88; the original is
+/// deleted.
+void _shrinkPhoto(List<String> paths) {
+  final from = paths[0], to = paths[1];
+  var photo = img.decodeImage(File(from).readAsBytesSync());
+  if (photo == null) throw const FormatException('Not an image');
+  photo = img.bakeOrientation(photo);
+  const maxSide = 2400;
+  final longSide = photo.width > photo.height ? photo.width : photo.height;
+  if (longSide > maxSide) {
+    final s = maxSide / longSide;
+    photo = img.copyResize(photo,
+        width: (photo.width * s).round(), height: (photo.height * s).round(), interpolation: img.Interpolation.average);
+  }
+  File(to).writeAsBytesSync(img.encodeJpg(photo, quality: 88));
+  try {
+    File(from).deleteSync();
+  } catch (_) {}
 }

@@ -66,8 +66,8 @@ flutter:
     - assets/brand/logo_full.png
     # On-device receipt reader (lib/services/receipt_reader.dart): PaddleOCR
     # PP-OCRv5 mobile, the same models the web uses (Apache-2.0).
-    - assets/ocr/det.onnx
-    - assets/ocr/rec.onnx
+    - assets/ocr/ppocrv5_mobile_det.onnx
+    - assets/ocr/ppocrv5_mobile_rec_best.onnx
     - assets/ocr/rec_dict.txt
     - assets/brand/logo_mark.png
     # Same lockup lifted off its white plate, one variant per palette:

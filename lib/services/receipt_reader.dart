@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_onnxruntime/flutter_onnxruntime.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'ocr_pipeline.dart';
 
@@ -30,12 +32,33 @@ class ReceiptReader {
   static const readerId = 'paddleocr-onnx-dart/PP-OCRv5_mobile';
 
   final _ort = OnnxRuntime();
+
+  static const _detModel = 'ppocrv5_mobile_det.onnx';
+  // PP-OCRv5 mobile rec + ArgMax/ReduceMax outputs (best_index, best_prob).
+  static const _recModel = 'ppocrv5_mobile_rec_best.onnx';
+
+  /// Copies of models this app no longer ships (renamed ones included).
+  Future<void> _dropOldModelCopies() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      for (final old in const ['det.onnx', 'rec.onnx']) {
+        final f = File('${dir.path}${Platform.pathSeparator}$old');
+        if (await f.exists()) await f.delete();
+      }
+    } catch (_) {
+      // Only wasted space if it stays.
+    }
+  }
   Future<({OrtSession det, OrtSession rec, List<String> chars})>? _loaded;
 
   Future<({OrtSession det, OrtSession rec, List<String> chars})> _load() =>
       _loaded ??= () async {
-        final det = await _ort.createSessionFromAsset('assets/ocr/det.onnx');
-        final rec = await _ort.createSessionFromAsset('assets/ocr/rec.onnx');
+        // flutter_onnxruntime copies an asset to the temp folder once and
+        // reuses that copy by FILE NAME: a model that changes must change
+        // its name too (the version is in it), or phones keep the old one.
+        await _dropOldModelCopies();
+        final det = await _ort.createSessionFromAsset('assets/ocr/$_detModel');
+        final rec = await _ort.createSessionFromAsset('assets/ocr/$_recModel');
         final dict = await rootBundle.loadString('assets/ocr/rec_dict.txt');
         final chars = dict.replaceAll('\r\n', '\n').split('\n');
         if (chars.isNotEmpty && chars.last.isEmpty) chars.removeLast();

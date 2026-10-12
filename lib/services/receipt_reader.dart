@@ -37,7 +37,7 @@ class ReceiptReader {
         final det = await _ort.createSessionFromAsset('assets/ocr/det.onnx');
         final rec = await _ort.createSessionFromAsset('assets/ocr/rec.onnx');
         final dict = await rootBundle.loadString('assets/ocr/rec_dict.txt');
-        final chars = dict.split('\n');
+        final chars = dict.replaceAll('\r\n', '\n').split('\n');
         if (chars.isNotEmpty && chars.last.isEmpty) chars.removeLast();
         return (det: det, rec: rec, chars: chars);
       }()

@@ -203,10 +203,20 @@ class ReceiptService {
     }
   }
 
-  Future<OcrResult> extractOcr({required String documentId, required String orgId}) async {
+  /// Sends what the phone's reader found (ReceiptReader, PaddleOCR on the
+  /// device) to the ocr-receipt function, which parses, checks and matches
+  /// it. Without lines the receipt is stored unread and its total is asked.
+  Future<OcrResult> extractOcr({
+    required String documentId,
+    required String orgId,
+    List<Map<String, dynamic>>? lines,
+    String? reader,
+  }) async {
     final res = await _db.functions.invoke('ocr-receipt', body: {
       'document_id': documentId,
       'org_id': orgId,
+      if (lines != null && lines.isNotEmpty) 'lines': lines,
+      'reader': ?reader,
     });
     final data = res.data as Map<String, dynamic>;
     if (data['error'] != null) throw Exception(data['error'] as String);

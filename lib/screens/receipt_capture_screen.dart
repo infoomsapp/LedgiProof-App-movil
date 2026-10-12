@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/receipt_service.dart';
+import '../services/receipt_reader.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
@@ -68,7 +69,21 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         clientId: widget.clientId,
       );
       setState(() => _stage = _Stage.extracting);
-      final result = await _service.extractOcr(documentId: documentId, orgId: widget.workspace.orgId);
+      // Read on the phone (PaddleOCR, no external engine). A reader failure
+      // only means the total gets typed -- the receipt is saved either way.
+      List<Map<String, dynamic>>? lines;
+      try {
+        final read = await ReceiptReader.instance.read(await picked.readAsBytes());
+        lines = read.map((l) => l.toJson()).toList();
+      } catch (e) {
+        debugPrint('[receipt-reader] $e');
+      }
+      final result = await _service.extractOcr(
+        documentId: documentId,
+        orgId: widget.workspace.orgId,
+        lines: lines,
+        reader: lines == null ? null : ReceiptReader.readerId,
+      );
       if (!mounted) return;
       setState(() {
         _result = result;
@@ -157,7 +172,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       body: switch (_stage) {
         _Stage.pick => _buildPick(),
         _Stage.uploading => _buildBusy('Uploading…'),
-        _Stage.extracting => _buildBusy('Saving receipt…'),
+        _Stage.extracting => _buildBusy('Reading the receipt on this phone…'),
         _Stage.done => _buildResult(),
         _Stage.error => _buildError(),
       },

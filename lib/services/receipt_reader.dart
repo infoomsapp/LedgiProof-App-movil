@@ -60,7 +60,10 @@ class ReceiptReader {
     final prob = (await probValue.asFlattenedList()).map((e) => (e as num).toDouble()).toList();
     await detIn.dispose();
     await probValue.dispose();
-    final boxes = await Isolate.run(() => dbBoxes(prob, input.dw, input.dh, input.w, input.h));
+    final found = await Isolate.run(() => dbBoxes(prob, input.dw, input.dh, input.w, input.h));
+    // Other papers in the photo are at another angle: skip reading them
+    // (the parser would drop them anyway) -- it saves seconds per receipt.
+    final boxes = sameAngleAsReceipt(found);
 
     // 3. What each box says.
     final lines = <ReadLine>[];

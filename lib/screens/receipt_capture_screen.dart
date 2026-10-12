@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/receipt_service.dart';
 import '../services/receipt_reader.dart';
+import 'receipt_camera_screen.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
@@ -54,8 +55,14 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   List<String> _issues = const [];
 
   Future<void> _capture(ImageSource source) async {
-    final XFile? picked = await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
-    if (picked == null) return;
+    // Photos: LedgiProof's own camera (autofocus, tap to focus, flash) --
+    // a sharp photo is what lets the reader read every line.
+    final XFile? picked = source == ImageSource.camera
+        ? await Navigator.of(context)
+            .push<String>(MaterialPageRoute(builder: (_) => const ReceiptCameraScreen()))
+            .then((path) => path == null ? null : XFile(path))
+        : await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
+    if (picked == null || !mounted) return;
 
     setState(() {
       _stage = _Stage.uploading;

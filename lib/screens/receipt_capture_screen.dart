@@ -37,6 +37,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   String? _error;
   OcrResult? _result;
   String? _linkedId;
+  BankCheck? _linkedCheck;
   String? _linking;
   bool _saving = false;
 
@@ -128,9 +129,12 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   Future<void> _link(MatchTx tx) async {
     setState(() => _linking = tx.id);
     try {
-      await _service.linkReceipt(documentId: _result!.documentId, transactionId: tx.id);
+      final check = await _service.linkReceipt(documentId: _result!.documentId, transactionId: tx.id);
       if (!mounted) return;
-      setState(() => _linkedId = tx.id);
+      setState(() {
+        _linkedId = tx.id;
+        _linkedCheck = check;
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -290,6 +294,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
             ]),
             if (m.transaction != null) ...[const SizedBox(height: 4), Text(line(m.transaction!), style: muted)],
+            if (m.transaction != null) _bankLine(m.bank, m.transaction!.amount),
           ]),
         );
       case 'suggested':
@@ -313,6 +318,8 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
                     child: Text(_linking == c.id ? '…' : 'This one'),
                   ),
               ]),
+            for (final c in m.candidates)
+              if (_linkedId == c.id && _linkedCheck != null) _bankLine(_linkedCheck!, c.amount),
           ]),
         );
       case 'no_amount':
@@ -331,6 +338,18 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   }
 
   /// Tapping a field corrects what was read -- until the receipt is linked.
+  /// R2: does the bank agree with the receipt?
+  Widget _bankLine(BankCheck check, double bankAmount) {
+    final text = check.text(receiptAmount: _amount, bankAmount: bankAmount, currency: _currency);
+    if (text == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text('${check.verified ? '✓' : '⚠'} $text',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+              color: check.verified ? AppColors.cyan : AppColors.amber)),
+    );
+  }
+
   Widget _buildIssues() {
     return Container(
       margin: const EdgeInsets.only(top: 4, bottom: 4),

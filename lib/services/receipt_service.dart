@@ -26,13 +26,41 @@ class MatchTx {
 /// What match_receipt() decided right after OCR: 'matched' (linked to
 /// [transaction]), 'suggested' (pick one of [candidates]), 'unmatched' (waits
 /// for the statement import -- it links by itself then) or 'no_amount'.
+/// Receipt vs its bank transaction once linked (OCR plan R2,
+/// supabase/sql/ocr_bank_check.sql in the web repo): 'exact', 'tip' (meals
+/// only; [tip] holds it) or 'mismatch'. Null when it can't be compared.
+class BankCheck {
+  final String? check;
+  final double? tip;
+  const BankCheck(this.check, this.tip);
+
+  BankCheck.fromJson(Map<String, dynamic>? j)
+      : check = j?['bank_check'] as String?,
+        tip = (j?['bank_tip'] as num?)?.toDouble();
+
+  /// One line for the user; null when there's nothing to say.
+  String? text({required double? receiptAmount, required double? bankAmount, String? currency}) {
+    String m(double? v) => v == null ? '—' : formatMoney(v, currency);
+    return switch (check) {
+      'exact' => 'Verified by your bank — it charged exactly ${m(bankAmount)}',
+      'tip' => 'Verified by your bank — ${m(receiptAmount)} plus a ${m(tip)} tip',
+      'mismatch' => 'The bank charged ${m(bankAmount)} but the receipt says ${m(receiptAmount)} — check it',
+      _ => null,
+    };
+  }
+
+  bool get verified => check == 'exact' || check == 'tip';
+}
+
 class ReceiptMatch {
   final String status;
   final MatchTx? transaction;
   final List<MatchTx> candidates;
+  final BankCheck bank;
 
   ReceiptMatch.fromJson(Map<String, dynamic> j)
       : status = (j['status'] as String?) ?? 'unmatched',
+        bank = BankCheck.fromJson(j),
         transaction = j['transaction'] is Map<String, dynamic>
             ? MatchTx.fromJson(j['transaction'] as Map<String, dynamic>)
             : null,
@@ -182,11 +210,12 @@ class ReceiptService {
   }
 
   /// The user picked which bank transaction a suggested receipt belongs to.
-  Future<void> linkReceipt({required String documentId, required String transactionId}) async {
-    await _db.rpc('link_receipt', params: {
+  Future<BankCheck> linkReceipt({required String documentId, required String transactionId}) async {
+    final data = await _db.rpc('link_receipt', params: {
       'p_document_id': documentId,
       'p_transaction_id': transactionId,
     });
+    return BankCheck.fromJson(data is Map<String, dynamic> ? data : null);
   }
 
   /// Receipts of this scope still waiting for their bank transaction.

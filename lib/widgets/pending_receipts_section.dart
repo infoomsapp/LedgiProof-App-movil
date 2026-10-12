@@ -90,8 +90,9 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
   }
 
   Future<void> _link(PendingReceipt r, MatchTx tx) => _run(r, () async {
-        await _service.linkReceipt(documentId: r.id, transactionId: tx.id);
-        if (mounted) _resolved(r, 'Linked to ${tx.description ?? 'the transaction'}');
+        final check = await _service.linkReceipt(documentId: r.id, transactionId: tx.id);
+        final bank = check.text(receiptAmount: r.amount, bankAmount: tx.amount, currency: r.currency);
+        if (mounted) _resolved(r, 'Linked to ${tx.description ?? 'the transaction'}${bank != null ? ' · $bank' : ''}');
       });
 
   Future<void> _fix(PendingReceipt r) async {

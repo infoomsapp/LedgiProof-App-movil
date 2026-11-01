@@ -3,17 +3,14 @@ import '../services/report_service.dart';
 import '../services/workspace_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/errors.dart';
+import '../utils/report_period.dart';
 
-const _months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
-
-/// P&L and Balance Sheet for a month, from the same RPCs the web reads.
+/// P&L, Balance Sheet, Cash Flow and Budget for a month, a quarter or a year,
+/// from the same RPCs the web reads.
 ///
-/// Both reports are per period, so the period picker sits above the toggle
-/// rather than inside either report: changing the month should not throw away
-/// which report you were looking at.
+/// Every report is per period, so the period picker sits above the toggle
+/// rather than inside either report: changing the period should not throw
+/// away which report you were looking at.
 class ReportsScreen extends StatefulWidget {
   final Workspace workspace;
   const ReportsScreen({super.key, required this.workspace});
@@ -27,16 +24,12 @@ enum _Report { pl, balanceSheet, cashFlow, budget }
 class _ReportsScreenState extends State<ReportsScreen> {
   final _service = ReportService();
   _Report _report = _Report.pl;
-  late int _year;
-  late int _month;
+  ReportPeriod _period = ReportPeriod.thisMonth();
   Future<Object>? _future;
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _year = now.year;
-    _month = now.month;
     _load();
   }
 
@@ -49,26 +42,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   void _load() {
     setState(() {
+      final p = _period;
       _future = switch (_report) {
         _Report.pl => _service.profitAndLoss(
             orgId: widget.workspace.orgId,
-            year: _year,
-            month: _month,
+            from: p.from,
+            to: p.to,
             clientId: _clientId),
+        // A balance sheet is a position, not a movement: for a quarter or a
+        // year it is the one at the period's last day.
         _Report.balanceSheet => _service.balanceSheet(
             orgId: widget.workspace.orgId,
-            year: _year,
-            month: _month,
+            year: p.year,
+            month: p.lastMonth,
             clientId: _clientId),
         _Report.cashFlow => _service.cashFlow(
             orgId: widget.workspace.orgId,
-            year: _year,
-            month: _month,
+            from: p.from,
+            to: p.to,
             clientId: _clientId),
         _Report.budget => _service.budgetVsActual(
             orgId: widget.workspace.orgId,
-            year: _year,
-            month: _month,
+            from: p.from,
+            to: p.to,
             clientId: _clientId),
       };
     });
@@ -93,7 +89,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 Column(
                   children: [
                     for (final pair in const [
-                      [(_Report.pl, 'P&L'), (_Report.balanceSheet, 'Balance')],
+                      [(_Report.pl, 'P&L'), (_Report.balanceSheet, 'Balance Sheet')],
                       [
                         (_Report.cashFlow, 'Cash Flow'),
                         (_Report.budget, 'Budget')
@@ -123,14 +119,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 const SizedBox(height: 10),
                 _PeriodBar(
-                  year: _year,
-                  month: _month,
-                  onChanged: (y, m) {
-                    _year = y;
-                    _month = m;
+                  period: _period,
+                  onChanged: (p) {
+                    _period = p;
                     _load();
                   },
                 ),
+                if (_report == _Report.balanceSheet ||
+                    _period.kind != PeriodKind.month) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _report == _Report.balanceSheet
+                        ? 'As of ${_period.endLabel}'
+                        : _period.span,
+                    style: TextStyle(fontSize: 11.5, color: AppColors.inkSubtle),
+                  ),
+                ],
               ],
             ),
           ),
@@ -174,8 +178,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   if (data.hasNoBudget) {
                     return _Empty(
                       icon: Icons.flag_outlined,
-                      title: 'No budget set for '
-                          '${_months[_month - 1]} $_year.',
+                      title: 'No budget set for ${_period.label}.',
                       body: 'Budgets are set on the web app, under Reports -> '
                           'Budget vs Actual. Once a monthly ceiling is set, '
                           'this report fills in and the assistant can warn '
@@ -196,9 +199,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _noData() => _Empty(
         icon: Icons.insights_outlined,
-        title: 'Nothing posted for ${_months[_month - 1]} $_year.',
+        title: 'Nothing posted for ${_period.label}.',
         body: 'A report only shows what has been entered and posted for the '
-            'period. Try another month.',
+            'period. Try another ${_kindWord(_period.kind)}.',
         onRetry: _load,
       );
 }
@@ -209,51 +212,322 @@ String _money(double v, String currency) {
   return currency == 'USD' ? '$sign\$$abs' : '$sign$currency $abs';
 }
 
+String _kindWord(PeriodKind k) => switch (k) {
+      PeriodKind.month => 'month',
+      PeriodKind.quarter => 'quarter',
+      PeriodKind.year => 'year',
+    };
+
+/// Month / Quarter / Year, then the period itself: the arrows step one
+/// period, and tapping the name opens the calendar to jump anywhere.
 class _PeriodBar extends StatelessWidget {
-  final int year;
-  final int month;
-  final void Function(int year, int month) onChanged;
-  const _PeriodBar(
-      {required this.year, required this.month, required this.onChanged});
+  final ReportPeriod period;
+  final void Function(ReportPeriod period) onChanged;
+  const _PeriodBar({required this.period, required this.onChanged});
+
+  Future<void> _openCalendar(BuildContext context) async {
+    final picked = await showModalBottomSheet<ReportPeriod>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      builder: (_) => _PeriodCalendar(initial: period),
+    );
+    if (picked != null && !picked.sameAs(period)) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _KindChips(
+          kind: period.kind,
+          onChanged: (k) => onChanged(period.withKind(k)),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => onChanged(period.step(-1)),
+                icon: Icon(Icons.chevron_left, color: AppColors.inkMuted),
+                tooltip: 'Previous ${_kindWord(period.kind)}',
+              ),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _openCalendar(context),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_month_outlined,
+                            size: 16, color: AppColors.inkMuted),
+                        const SizedBox(width: 6),
+                        Text(
+                          period.label,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => onChanged(period.step(1)),
+                icon: Icon(Icons.chevron_right, color: AppColors.inkMuted),
+                tooltip: 'Next ${_kindWord(period.kind)}',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KindChips extends StatelessWidget {
+  final PeriodKind kind;
+  final void Function(PeriodKind kind) onChanged;
+  const _KindChips({required this.kind, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(9),
       ),
       child: Row(
         children: [
-          IconButton(
-            onPressed: () {
-              final m = month == 1 ? 12 : month - 1;
-              onChanged(month == 1 ? year - 1 : year, m);
-            },
-            icon: Icon(Icons.chevron_left, color: AppColors.inkMuted),
-            tooltip: 'Previous month',
-          ),
-          Expanded(
-            child: Text(
-              '${_months[month - 1]} $year',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.ink),
+          for (final (k, label) in const [
+            (PeriodKind.month, 'Month'),
+            (PeriodKind.quarter, 'Quarter'),
+            (PeriodKind.year, 'Year'),
+          ])
+            Expanded(
+              child: Material(
+                color: kind == k ? AppColors.surface : Colors.transparent,
+                borderRadius: BorderRadius.circular(7),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(7),
+                  onTap: kind == k ? null : () => onChanged(k),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: kind == k ? AppColors.ink : AppColors.inkMuted,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The calendar: a year of months, a year of quarters, or a page of years.
+/// Picking a cell closes the sheet and returns that period.
+class _PeriodCalendar extends StatefulWidget {
+  final ReportPeriod initial;
+  const _PeriodCalendar({required this.initial});
+
+  @override
+  State<_PeriodCalendar> createState() => _PeriodCalendarState();
+}
+
+class _PeriodCalendarState extends State<_PeriodCalendar> {
+  late PeriodKind _kind = widget.initial.kind;
+
+  /// The year shown (months and quarters), or the last year on the page of
+  /// years -- which ends at this year or the chosen one, whichever is later,
+  /// so both are on it.
+  late int _year = widget.initial.kind == PeriodKind.year &&
+          widget.initial.year < DateTime.now().year
+      ? DateTime.now().year
+      : widget.initial.year;
+
+  final _today = DateTime.now();
+
+  static const _yearsPerPage = 12;
+
+  void _pick(ReportPeriod p) => Navigator.of(context).pop(p);
+
+  Widget _cell({
+    required String title,
+    String? subtitle,
+    required bool selected,
+    required bool current,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? AppColors.primary : AppColors.surface2,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: current && !selected ? AppColors.primary : Colors.transparent,
+              width: 1.5,
             ),
           ),
-          IconButton(
-            onPressed: () {
-              final m = month == 12 ? 1 : month + 1;
-              onChanged(month == 12 ? year + 1 : year, m);
-            },
-            icon: Icon(Icons.chevron_right, color: AppColors.inkMuted),
-            tooltip: 'Next month',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? Colors.white : AppColors.ink)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: selected
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : AppColors.inkMuted)),
+              ],
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _grid(int columns, double aspect, List<Widget> cells) => GridView.count(
+        crossAxisCount: columns,
+        childAspectRatio: aspect,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        children: cells,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = widget.initial;
+    final String header;
+    final int stepBy;
+    final Widget grid;
+    switch (_kind) {
+      case PeriodKind.month:
+        header = '$_year';
+        stepBy = 1;
+        grid = _grid(4, 1.6, [
+          for (var m = 1; m <= 12; m++)
+            _cell(
+              title: monthNames[m - 1].substring(0, 3),
+              selected: sel.kind == PeriodKind.month && sel.year == _year && sel.month == m,
+              current: _today.year == _year && _today.month == m,
+              onTap: () => _pick(ReportPeriod(PeriodKind.month, _year, m)),
+            ),
+        ]);
+      case PeriodKind.quarter:
+        header = '$_year';
+        stepBy = 1;
+        grid = _grid(2, 2.2, [
+          for (var q = 1; q <= 4; q++)
+            _cell(
+              title: 'Q$q',
+              subtitle: '${monthNames[(q - 1) * 3].substring(0, 3)} – '
+                  '${monthNames[q * 3 - 1].substring(0, 3)}',
+              selected: sel.kind == PeriodKind.quarter && sel.year == _year && sel.quarter == q,
+              current: _today.year == _year && (_today.month - 1) ~/ 3 + 1 == q,
+              onTap: () => _pick(ReportPeriod(PeriodKind.quarter, _year, (q - 1) * 3 + 1)),
+            ),
+        ]);
+      case PeriodKind.year:
+        final first = _year - _yearsPerPage + 1;
+        header = '$first – $_year';
+        stepBy = _yearsPerPage;
+        grid = _grid(4, 1.6, [
+          for (var y = first; y <= _year; y++)
+            _cell(
+              title: '$y',
+              selected: sel.kind == PeriodKind.year && sel.year == y,
+              current: _today.year == y,
+              onTap: () => _pick(ReportPeriod(PeriodKind.year, y, 1)),
+            ),
+        ]);
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Choose a period',
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink)),
+            const SizedBox(height: 12),
+            _KindChips(
+              kind: _kind,
+              onChanged: (k) => setState(() {
+                _kind = k;
+                // The page of years ends at the selected year or this one,
+                // whichever is later, so this year is always on it.
+                _year = k == PeriodKind.year
+                    ? (sel.year > _today.year ? sel.year : _today.year)
+                    : sel.year;
+              }),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => setState(() => _year -= stepBy),
+                  icon: Icon(Icons.chevron_left, color: AppColors.inkMuted),
+                  tooltip: 'Earlier',
+                ),
+                Expanded(
+                  child: Text(header,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.ink)),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _year += stepBy),
+                  icon: Icon(Icons.chevron_right, color: AppColors.inkMuted),
+                  tooltip: 'Later',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            grid,
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => _pick(ReportPeriod(_kind, _today.year, _today.month)),
+              child: Text('This ${_kindWord(_kind)}'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -512,9 +786,28 @@ class _BudgetView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final over = data.overCeiling;
+    final oneMonth = data.months == 1;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       children: [
+        // Budgets are set month by month: over a quarter or a year, say when
+        // only some of the months have one, so the spending is not read
+        // against a budget that covers less time than it does.
+        if (!oneMonth && data.budgetedMonths < data.months)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: AppColors.amberBg,
+              border: Border.all(color: AppColors.amber),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'A budget is set for ${data.budgetedMonths} of the '
+              '${data.months} months. Spending covers all ${data.months}.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.ink),
+            ),
+          ),
         if (data.periodBudget > 0)
           Container(
             padding: const EdgeInsets.all(14),
@@ -535,9 +828,13 @@ class _BudgetView extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        over
-                            ? 'Over the monthly ceiling'
-                            : 'Within the monthly ceiling',
+                        oneMonth
+                            ? (over
+                                ? 'Over the monthly ceiling'
+                                : 'Within the monthly ceiling')
+                            : (over
+                                ? 'Over the ceiling'
+                                : 'Within the ceiling'),
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -560,7 +857,7 @@ class _BudgetView extends StatelessWidget {
                 Text(
                   'Spent ${_money(data.totalActual, currency)} of '
                   '${_money(data.periodBudget, currency)} budgeted '
-                  'for the month.',
+                  '${oneMonth ? 'for the month' : 'across these ${data.months} months'}.',
                   style: TextStyle(
                       fontSize: 12, color: AppColors.inkMuted),
                 ),

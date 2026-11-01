@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/report_period.dart';
 
 /// Profit & Loss and Balance Sheet, straight from the same two RPCs the web's
 /// Reports page calls. No arithmetic is repeated here beyond the two
@@ -181,8 +182,16 @@ class BudgetVsActual {
   final double periodBudget;
   final List<BudgetLine> lines;
 
+  /// Months in the period, and how many of them have any budget set. Over a
+  /// quarter with one month budgeted, the screen says so rather than
+  /// measuring three months of spending against one month of budget silently.
+  final int months;
+  final int budgetedMonths;
+
   BudgetVsActual.fromJson(Map<String, dynamic> j)
       : period = (j['period'] as String?) ?? '',
+        months = (j['months'] as num?)?.toInt() ?? 1,
+        budgetedMonths = (j['budgeted_months'] as num?)?.toInt() ?? 0,
         totalBudget = (j['total_budget'] as num?)?.toDouble() ?? 0,
         totalActual = (j['total_actual'] as num?)?.toDouble() ?? 0,
         periodBudget = (j['period_budget'] as num?)?.toDouble() ?? 0,
@@ -230,16 +239,19 @@ class BooksSnapshot {
 class ReportService {
   final _db = Supabase.instance.client;
 
+  /// Income and expenses from [from] through [to] (a month, a quarter or a
+  /// year). get_profit_and_loss(year, month) is year-to-date, which is why
+  /// the range version is the one read here.
   Future<ProfitAndLoss> profitAndLoss({
     required String orgId,
-    required int year,
-    required int month,
+    required DateTime from,
+    required DateTime to,
     String? clientId,
   }) async {
-    final data = await _db.rpc('get_profit_and_loss', params: {
+    final data = await _db.rpc('get_profit_and_loss_range', params: {
       'p_org_id': orgId,
-      'p_year': year,
-      'p_month': month,
+      'p_from': isoDay(from),
+      'p_to': isoDay(to),
       'p_client_id': clientId,
     });
     final rows = ((data as List?) ?? [])
@@ -266,31 +278,33 @@ class ReportService {
     return BalanceSheet.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
+  /// Whole months, from [from]'s month through [to]'s month.
   Future<CashFlow> cashFlow({
     required String orgId,
-    required int year,
-    required int month,
+    required DateTime from,
+    required DateTime to,
     String? clientId,
   }) async {
-    final data = await _db.rpc('get_cash_flow', params: {
+    final data = await _db.rpc('get_cash_flow_range', params: {
       'p_org_id': orgId,
-      'p_year': year,
-      'p_month': month,
+      'p_from': isoDay(from),
+      'p_to': isoDay(to),
       'p_client_id': clientId,
     });
     return CashFlow.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
+  /// Whole months: each account's budget is the sum of its monthly budgets.
   Future<BudgetVsActual> budgetVsActual({
     required String orgId,
-    required int year,
-    required int month,
+    required DateTime from,
+    required DateTime to,
     String? clientId,
   }) async {
-    final data = await _db.rpc('get_budget_vs_actual', params: {
+    final data = await _db.rpc('get_budget_vs_actual_range', params: {
       'p_org_id': orgId,
-      'p_year': year,
-      'p_month': month,
+      'p_from': isoDay(from),
+      'p_to': isoDay(to),
       'p_client_id': clientId,
     });
     return BudgetVsActual.fromJson(Map<String, dynamic>.from(data as Map));

@@ -45,6 +45,9 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   BankCheck? _linkedCheck;
   String? _linking;
   bool _saving = false;
+  // A possible duplicate: the person sets this copy aside or keeps both.
+  bool _resolving = false;
+  bool _discarded = false;
 
   // What the receipt reads -- OCR first, then whatever the user corrected --
   // and the latest match_receipt() decision for those values.
@@ -162,6 +165,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
         _linkedId = null;
         _linking = null;
         _match = null;
+        _discarded = false;
       });
 
   /// "Fix what was read": save the corrected values and match again.
@@ -189,6 +193,28 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _resolveDuplicate({required bool keep}) async {
+    setState(() => _resolving = true);
+    try {
+      final m = await _service.resolveDuplicate(_result!.documentId, keep: keep);
+      if (!mounted) return;
+      setState(() {
+        if (!keep) {
+          _discarded = true;
+        } else if (m != null) {
+          _match = m;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyError(e, "Couldn't save your choice."))),
+      );
+    } finally {
+      if (mounted) setState(() => _resolving = false);
     }
   }
 
@@ -402,6 +428,43 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
               ]),
             for (final c in m.candidates)
               if (_linkedId == c.id && _linkedCheck != null) _bankLine(_linkedCheck!, c.amount),
+          ]),
+        );
+      case 'duplicate':
+        if (_discarded) {
+          return box(AppColors.surface, Text('Discarded. The receipt you saved before stays as it is.', style: muted));
+        }
+        final o = m.duplicateOf;
+        return box(
+          AppColors.amberBg,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.content_copy_outlined, size: 16, color: AppColors.amber),
+              const SizedBox(width: 6),
+              Text('This receipt is already saved',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.ink)),
+            ]),
+            if (o != null) ...[
+              const SizedBox(height: 4),
+              Text(o.summary(_currency), style: muted),
+              if (o.transaction != null) Text('Matched to ${line(o.transaction!)}', style: muted),
+            ],
+            const SizedBox(height: 4),
+            Text("If it's the same paper, keeping both counts the expense twice. "
+                'Two real purchases that look alike? Keep both.', style: muted),
+            const SizedBox(height: 8),
+            Row(children: [
+              FilledButton(
+                onPressed: _resolving ? null : () => _resolveDuplicate(keep: false),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                child: const Text('Discard this copy'),
+              ),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: _resolving ? null : () => _resolveDuplicate(keep: true),
+                child: const Text('Keep both'),
+              ),
+            ]),
           ]),
         );
       case 'no_amount':

@@ -226,5 +226,32 @@ void main() {
       expect(r.matchStatus, 'no_amount');
       expect(formatMoney(12, 'EUR'), 'EUR 12.00');
     });
+
+    test('a possible duplicate names the receipt it repeats', () {
+      final saved = {
+        'id': 'd0',
+        'merchant': 'PETSMART',
+        'amount': 34.97,
+        'date': '2026-10-20',
+        'created_at': '2026-11-01T05:34:52.772136+00:00',
+        'transaction': null,
+      };
+      final r = PendingReceipt.fromJson({
+        'id': 'd3',
+        'filename': 'receipt_2.jpg',
+        'match_status': 'duplicate',
+        'ocr_merchant': 'PETSMART',
+        'ocr_amount': 34.97,
+        'ocr_date': '2026-10-20',
+        'duplicate_of': saved,
+        'candidates': [],
+      });
+      expect(r.matchStatus, 'duplicate');
+      expect(r.duplicateOf?.id, 'd0');
+      expect(r.duplicateOf?.summary('USD'), 'PETSMART · \$34.97 · 2026-10-20 · scanned 2026-11-01');
+      final m = ReceiptMatch.fromJson({'status': 'duplicate', 'duplicate_of': saved, 'issues': []});
+      expect(m.duplicateOf?.amount, 34.97);
+      expect(m.transaction, isNull);
+    });
   });
 }

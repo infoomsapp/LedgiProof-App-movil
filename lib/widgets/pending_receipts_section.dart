@@ -12,6 +12,8 @@ import 'receipt_edit_sheet.dart';
 ///   · "Cash expense"   create_expense_from_receipt(): the receipt becomes
 ///                      the transaction (it then appears in the inbox)
 ///   · "Not needed"     dismiss_receipt()
+/// A possible duplicate (the same paper scanned again) only offers "Discard
+/// this copy" or "Keep both" -- resolve_duplicate_receipt().
 /// Fixing and linking are open to whoever may act for the workspace (a
 /// portal client too); recording and dismissing are staff-only ([canWrite]).
 class PendingReceiptsSection extends StatefulWidget {
@@ -121,6 +123,18 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
         widget.onExpenseCreated?.call();
       });
 
+  Future<void> _duplicate(PendingReceipt r, {required bool keep}) => _run(r, () async {
+        final m = await _service.resolveDuplicate(r.id, keep: keep);
+        if (!mounted) return;
+        if (!keep) {
+          _resolved(r, 'Copy discarded');
+        } else if (m?.status == 'matched') {
+          _resolved(r, 'Kept both · linked to ${m?.transaction?.description ?? 'the transaction'}');
+        } else {
+          await _load();
+        }
+      });
+
   Future<void> _dismiss(PendingReceipt r) => _run(r, () async {
         await _service.dismiss(r.id);
         if (mounted) _resolved(r, 'Receipt set aside');
@@ -196,6 +210,7 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
                 child: Text('⚠ ${r.issues.map(ocrIssueText).join(' · ')}',
                     style: TextStyle(fontSize: 11, color: AppColors.amber, height: 1.35)),
               ),
+            if (r.matchStatus == 'duplicate') _duplicateBox(r, isBusy, muted) else ...[
             if (r.candidates.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
@@ -244,6 +259,7 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
                 ],
               ],
             ),
+            ],
             if (_errors[r.id] != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
@@ -251,6 +267,30 @@ class _PendingReceiptsSectionState extends State<PendingReceiptsSection> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// The same paper scanned before: which receipt it repeats, and the choice.
+  Widget _duplicateBox(PendingReceipt r, bool isBusy, TextStyle muted) {
+    final o = r.duplicateOf;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(10, 8, 6, 2),
+      decoration: BoxDecoration(color: AppColors.amberBg, borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Possible duplicate', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.ink)),
+          if (o != null)
+            Text('Same as ${o.summary(r.currency)}${o.transaction != null ? ' · matched to the bank' : ''}',
+                style: muted),
+          Row(children: [
+            TextButton(onPressed: isBusy ? null : () => _duplicate(r, keep: false), child: const Text('Discard this copy')),
+            TextButton(onPressed: isBusy ? null : () => _duplicate(r, keep: true), child: const Text('Keep both')),
+          ]),
+        ],
       ),
     );
   }

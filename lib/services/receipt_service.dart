@@ -25,7 +25,9 @@ class MatchTx {
 
 /// What match_receipt() decided right after OCR: 'matched' (linked to
 /// [transaction]), 'suggested' (pick one of [candidates]), 'unmatched' (waits
-/// for the statement import -- it links by itself then) or 'no_amount'.
+/// for the statement import -- it links by itself then), 'no_amount' or
+/// 'duplicate' (the same paper is already saved: [duplicateOf]; the person
+/// discards it or keeps both -- receipt_duplicates_a.sql in the web repo).
 /// Receipt vs its bank transaction once linked (OCR plan R2,
 /// supabase/sql/ocr_bank_check.sql in the web repo): 'exact', 'tip' (meals
 /// only; [tip] holds it) or 'mismatch'. Null when it can't be compared.
@@ -57,16 +59,49 @@ class ReceiptMatch {
   final MatchTx? transaction;
   final List<MatchTx> candidates;
   final BankCheck bank;
+  final SavedReceipt? duplicateOf;
 
   ReceiptMatch.fromJson(Map<String, dynamic> j)
       : status = (j['status'] as String?) ?? 'unmatched',
         bank = BankCheck.fromJson(j),
+        duplicateOf = j['duplicate_of'] is Map<String, dynamic>
+            ? SavedReceipt.fromJson(j['duplicate_of'] as Map<String, dynamic>)
+            : null,
         transaction = j['transaction'] is Map<String, dynamic>
             ? MatchTx.fromJson(j['transaction'] as Map<String, dynamic>)
             : null,
         candidates = ((j['candidates'] as List?) ?? [])
             .map((e) => MatchTx.fromJson(e as Map<String, dynamic>))
             .toList();
+}
+
+/// The receipt already saved that a new scan repeats.
+class SavedReceipt {
+  final String id;
+  final String? merchant;
+  final double? amount;
+  final String? date;
+  final String createdAt;
+  /// The bank transaction it is linked to, if any.
+  final MatchTx? transaction;
+
+  SavedReceipt.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as String,
+        merchant = j['merchant'] as String?,
+        amount = (j['amount'] as num?)?.toDouble(),
+        date = j['date'] as String?,
+        createdAt = (j['created_at'] as String?) ?? '',
+        transaction = j['transaction'] is Map<String, dynamic>
+            ? MatchTx.fromJson(j['transaction'] as Map<String, dynamic>)
+            : null;
+
+  /// "PETSMART · $34.97 · 2026-10-20 · scanned 2026-11-01"
+  String summary(String currency) => [
+        merchant ?? 'Receipt',
+        if (amount != null) formatMoney(amount!, currency),
+        ?date,
+        if (createdAt.length >= 10) 'scanned ${createdAt.substring(0, 10)}',
+      ].join(' · ');
 }
 
 class OcrResult {
@@ -157,13 +192,14 @@ class ReceiptFields {
 class PendingReceipt {
   final String id;
   final String filename;
-  final String matchStatus; // 'suggested' | 'unmatched' | 'no_amount'
+  final String matchStatus; // 'suggested' | 'unmatched' | 'no_amount' | 'duplicate'
   final String? merchant;
   final double? amount;
   final String? date;
   final String currency;
   final List<String> issues;
   final List<MatchTx> candidates;
+  final SavedReceipt? duplicateOf;
 
   PendingReceipt.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
@@ -174,6 +210,9 @@ class PendingReceipt {
         date = j['ocr_date'] as String?,
         currency = ((j['ocr_currency'] as String?) ?? 'USD').toUpperCase(),
         issues = ((j['ocr_issues'] as List?) ?? []).map((e) => e.toString()).toList(),
+        duplicateOf = j['duplicate_of'] is Map<String, dynamic>
+            ? SavedReceipt.fromJson(j['duplicate_of'] as Map<String, dynamic>)
+            : null,
         candidates = ((j['candidates'] as List?) ?? [])
             .map((e) => MatchTx.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -282,6 +321,16 @@ class ReceiptService {
   Future<MatchTx> createExpense(String documentId) async {
     final data = await _db.rpc('create_expense_from_receipt', params: {'p_document_id': documentId});
     return MatchTx.fromJson((data as Map<String, dynamic>)['transaction'] as Map<String, dynamic>);
+  }
+
+  /// A possible duplicate: [keep] false sets it aside (it stays on file, out
+  /// of every list); true keeps both, and the receipt is matched as usual.
+  Future<ReceiptMatch?> resolveDuplicate(String documentId, {required bool keep}) async {
+    final data = await _db.rpc('resolve_duplicate_receipt', params: {
+      'p_document_id': documentId,
+      'p_keep': keep,
+    });
+    return keep && data is Map<String, dynamic> ? ReceiptMatch.fromJson(data) : null;
   }
 
   /// The receipt doesn't need a transaction.

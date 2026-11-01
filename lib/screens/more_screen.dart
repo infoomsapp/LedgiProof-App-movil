@@ -13,6 +13,7 @@ import 'notes_screen.dart';
 import 'reports_screen.dart';
 import 'settings_screen.dart';
 import 'timer_screen.dart';
+import '../widgets/lp_brand_footer.dart';
 
 /// The overflow tab. Every row here used to answer with a "coming in the next
 /// build pass" snackbar; they now open real screens. Time reuses the timer that
@@ -129,6 +130,7 @@ class MoreScreen extends StatelessWidget {
             destructive: true,
             onTap: () => Supabase.instance.client.auth.signOut(),
           ),
+          const LpBrandFooter(),
         ],
       ),
     );

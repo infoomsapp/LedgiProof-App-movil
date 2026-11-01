@@ -16,6 +16,25 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // The LedgiProof ID (profiles.lp_user_code): signs in in place of the email.
+  String? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+    try {
+      final row = await Supabase.instance.client
+          .from('profiles').select('lp_user_code').eq('id', uid).maybeSingle();
+      if (mounted) setState(() => _userId = row?['lp_user_code'] as String?);
+    } catch (_) {/* the row just stays hidden */}
+  }
+
   @override
   Widget build(BuildContext context) {
     final email = Supabase.instance.client.auth.currentUser?.email ?? '—';
@@ -64,6 +83,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 _InfoRow(icon: Icons.mail_outline, label: 'Signed in as', value: email),
                 _Divider(),
+                if (_userId != null) ...[
+                  _InfoRow(icon: Icons.fingerprint, label: 'User ID', value: _userId!),
+                  _Divider(),
+                ],
                 _InfoRow(
                     icon: Icons.apartment_outlined,
                     label: 'Workspace',

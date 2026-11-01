@@ -1,9 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Only for the basic in-app trip tracker (foreground use only, no
          background/"always" location - that scope belongs to ControlMiles). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <!-- Receipt capture (image_picker camera source) -->
+    <!-- Receipt capture: LedgiProof's camera and the document scanner -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="LedgiProof"
@@ -12,7 +13,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:replace="android:dataExtractionRules,android:fullBackupContent">
         <activity
             android:name=".MainActivity"
             android:exported="true"

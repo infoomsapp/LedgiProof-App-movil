@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
+import 'package:flutter/foundation.dart' show compute, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../services/receipt_service.dart';
 import '../services/receipt_reader.dart';
 import 'receipt_camera_screen.dart';
@@ -54,6 +57,43 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
   // corrects it -- a person checked it.
   List<String> _issues = const [];
 
+  /// The phone's document scanner (ML Kit on Android, VisionKit on iPhone,
+  /// both on the device): it finds the receipt's four corners, focuses and
+  /// takes the shot when the paper is steady, lets the person drag a corner,
+  /// and returns the receipt flattened and cropped -- no table, no shadow
+  /// around it, which is what the reader reads best. Our own camera is the
+  /// fallback when the phone has no scanner.
+  Future<void> _scan() async {
+    List<String>? paths;
+    try {
+      paths = await CunningDocumentScanner.getPictures(
+        noOfPages: 1,
+        scannerSource: ScannerSource.camera,
+        androidScannerMode: AndroidScannerMode.full,
+        iosScannerOptions: IosScannerOptions(imageFormat: IosImageFormat.jpg, jpgCompressionQuality: 0.9),
+      );
+    } catch (e) {
+      debugPrint('[document-scanner] $e');
+      if (mounted) await _capture(ImageSource.camera);
+      return;
+    }
+    if (paths == null || paths.isEmpty || !mounted) return;
+    final out = '${(await getTemporaryDirectory()).path}/receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    try {
+      await compute(shrinkReceiptPhoto, [paths.first, out]);
+    } catch (e) {
+      debugPrint('[document-scanner] $e');
+      if (mounted) {
+        setState(() {
+          _error = "Couldn't use that scan. Try again.";
+          _stage = _Stage.error;
+        });
+      }
+      return;
+    }
+    if (mounted) await _process(XFile(out));
+  }
+
   Future<void> _capture(ImageSource source) async {
     // Photos: LedgiProof's own camera (autofocus, tap to focus, flash) --
     // a sharp photo is what lets the reader read every line.
@@ -63,6 +103,10 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
             .then((path) => path == null ? null : XFile(path))
         : await _picker.pickImage(source: source, imageQuality: 85, maxWidth: 2400);
     if (picked == null || !mounted) return;
+    await _process(picked);
+  }
+
+  Future<void> _process(XFile picked) async {
 
     setState(() {
       _stage = _Stage.uploading;
@@ -194,15 +238,28 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           const Spacer(),
           Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.inkSubtle),
           const SizedBox(height: 12),
-          Text('Snap a photo of your receipt', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+          Text('Scan a receipt or a bill', style: TextStyle(color: AppColors.inkMuted, fontSize: 13)),
+          const SizedBox(height: 6),
+          Text('Lay it flat on a darker surface. The scanner finds the corners and takes it for you.',
+              textAlign: TextAlign.center, style: TextStyle(color: AppColors.inkSubtle, fontSize: 12)),
           const Spacer(),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
+              onPressed: _scan,
+              icon: const Icon(Icons.document_scanner_outlined),
+              label: const Text('Scan document'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(vertical: 16)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
               onPressed: () => _capture(ImageSource.camera),
               icon: const Icon(Icons.camera_alt_outlined),
               label: const Text('Take a photo'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(vertical: 16)),
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.ink, side: BorderSide(color: AppColors.border), padding: const EdgeInsets.symmetric(vertical: 16)),
             ),
           ),
           const SizedBox(height: 10),

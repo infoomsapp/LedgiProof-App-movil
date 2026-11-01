@@ -135,7 +135,7 @@ class _ReceiptCameraScreenState extends State<ReceiptCameraScreen> with WidgetsB
       // made in this method would share its context with the setState
       // closures and try to send the whole screen (camera controller
       // included) to the isolate -- it can't, and every photo failed.
-      await compute(_shrinkPhoto, [shot.path, out]);
+      await compute(shrinkReceiptPhoto, [shot.path, out]);
       if (mounted) Navigator.of(context).pop(out);
     } catch (e) {
       debugPrint('[receipt-camera] $e');
@@ -304,7 +304,7 @@ class _FocusRing extends StatelessWidget {
 /// Runs in a background isolate (compute): [from, to] photo paths. The
 /// photo comes out upright, at most 2400 px, JPEG 88; the original is
 /// deleted.
-void _shrinkPhoto(List<String> paths) {
+void shrinkReceiptPhoto(List<String> paths) {
   final from = paths[0], to = paths[1];
   var photo = img.decodeImage(File(from).readAsBytesSync());
   if (photo == null) throw const FormatException('Not an image');

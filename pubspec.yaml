@@ -49,6 +49,7 @@ dependencies:
   image: 4.10.1
   camera: 0.12.1
   path_provider: ^2.1.6
+  cunning_document_scanner: ^3.0.4
 
 dev_dependencies:
   flutter_test:

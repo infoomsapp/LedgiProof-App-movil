@@ -171,6 +171,19 @@ void main() {
       expect(OcrResult.fromJson(ocr({'status': 'unmatched'})).match!.status, 'unmatched');
       expect(OcrResult.fromJson(ocr(null)).match, isNull);
     });
+
+    // OCR plan B1: ocr-receipt also says when the document is a vendor's invoice.
+    test('a vendor bill and a plain receipt', () {
+      final bill = OcrResult.fromJson({
+        ...ocr(null),
+        'bill': {'doc_type': 'bill', 'bill_number': 'INV-20391', 'bill_date': '2026-10-02', 'due_date': '2026-11-01', 'terms_days': 30},
+      });
+      expect(bill.bill!.billNumber, 'INV-20391');
+      expect(bill.bill!.dueDate, '2026-11-01');
+      expect(bill.bill!.termsDays, 30);
+      expect(OcrResult.fromJson({...ocr(null), 'bill': null}).bill, isNull);
+      expect(OcrResult.fromJson(ocr(null)).bill, isNull);
+    });
   });
 
   // Shape of get_pending_receipts() on the live database.

@@ -84,6 +84,9 @@ class OcrResult {
   /// Checks the reading failed (OCR plan R1). Any issue: a person confirms
   /// the link -- the receipt never links by itself.
   final List<String> issues;
+  /// OCR plan B1: the document reads as a vendor's invoice (null = a receipt).
+  /// It is recorded as a bill from the web (Receipts waiting for a match).
+  final BillReading? bill;
 
   OcrResult.fromJson(Map<String, dynamic> json)
       : documentId = json['document_id'] as String,
@@ -96,9 +99,26 @@ class OcrResult {
         date = json['date'] as String?,
         currency = (json['currency'] as String?) ?? 'USD',
         confidence = (json['confidence'] as num?)?.toInt() ?? 0,
-        issues = ((json['issues'] as List?) ?? []).map((e) => e.toString()).toList();
+        issues = ((json['issues'] as List?) ?? []).map((e) => e.toString()).toList(),
+        bill = json['bill'] is Map<String, dynamic>
+            ? BillReading.fromJson(json['bill'] as Map<String, dynamic>)
+            : null;
 
   bool get hasData => merchantName != null || totalAmount != null || date != null;
+}
+
+/// A vendor's invoice as the parser read it (ocr-receipt/parse.ts readBill).
+class BillReading {
+  final String? billNumber;
+  final String? billDate;
+  final String? dueDate;
+  final int? termsDays;
+
+  BillReading.fromJson(Map<String, dynamic> j)
+      : billNumber = j['bill_number'] as String?,
+        billDate = j['bill_date'] as String?,
+        dueDate = j['due_date'] as String?,
+        termsDays = (j['terms_days'] as num?)?.toInt();
 }
 
 /// What each OCR check means (supabase/functions/ocr-receipt/validate.ts in

@@ -284,6 +284,7 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           _field('Merchant', _merchant ?? 'Tap to enter'),
           _field('Amount', _amount != null ? formatMoney(_amount!, _currency) : 'Tap to enter'),
           _field('Date', _date ?? 'Tap to enter'),
+          if (r.bill != null) _buildBill(r.bill!),
           if (_issues.isNotEmpty) _buildIssues(),
           if (_saving) const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: LinearProgressIndicator()),
           const SizedBox(height: 8),
@@ -390,6 +391,29 @@ class _ReceiptCaptureScreenState extends State<ReceiptCaptureScreen> {
           const SizedBox(height: 4),
           Text("It waits for you instead of linking by itself. Tap a field to fix what was read.",
               style: TextStyle(fontSize: 11.5, color: AppColors.inkMuted, height: 1.4)),
+        ],
+      ),
+    );
+  }
+
+  /// A vendor's invoice: what was read, and where it becomes a bill.
+  Widget _buildBill(BillReading b) {
+    final due = b.dueDate ?? (b.termsDays == 0 ? 'On receipt' : null);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(9)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('VENDOR BILL', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.inkSubtle, letterSpacing: 0.4)),
+          const SizedBox(height: 4),
+          Text('Bill #: ${b.billNumber ?? '—'}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+          Text('Due: ${due ?? '—'}${b.termsDays != null && b.termsDays! > 0 ? ' (Net ${b.termsDays})' : ''}',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.ink)),
+          const SizedBox(height: 4),
+          Text('Record it as a bill from For review on the web.', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
         ],
       ),
     );

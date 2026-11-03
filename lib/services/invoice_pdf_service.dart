@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/doc_format.dart';
@@ -132,7 +133,11 @@ class InvoicePdfService {
           .eq('id', invoiceRow['org_id'] as String)
           .maybeSingle();
       if (o != null) org = Map<String, dynamic>.from(o);
-    } catch (_) {}
+    } catch (e) {
+      // A portal client can't read organizations; the public token below
+      // is their way in.
+      debugPrint('[invoice_pdf] organization lookup failed: $e');
+    }
     if (org == null && d.publicToken != null && !d.isDraft) {
       try {
         final r = await _db.rpc('get_invoice_by_public_token', params: {
@@ -141,7 +146,14 @@ class InvoicePdfService {
         });
         final o = (r as Map)['org'];
         if (o is Map) org = Map<String, dynamic>.from(o);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[invoice_pdf] public invoice lookup failed: $e');
+      }
+    }
+    // Without the business's name, terms and payment instructions the PDF
+    // isn't an invoice the client can act on: say so instead.
+    if (org == null) {
+      throw Exception("Couldn't load your business details for the PDF. Check your connection and try again.");
     }
 
     Map<String, dynamic>? client;
@@ -154,12 +166,15 @@ class InvoicePdfService {
             .eq('id', d.clientId)
             .maybeSingle();
         if (c != null) client = Map<String, dynamic>.from(c);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[invoice_pdf] client lookup failed: $e');
+        throw Exception("Couldn't load the client's details for the PDF. Check your connection and try again.");
+      }
     }
 
     final input = assembleInvoicePdfInput(d,
         invoiceRow: invoiceRow, org: org, client: client);
-    final logo = await _fetchLogo(org?['logo_url'] as String?);
+    final logo = await _fetchLogo(org['logo_url'] as String?);
     return buildInvoicePdf(input, logo: logo);
   }
 

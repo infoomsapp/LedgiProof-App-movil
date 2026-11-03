@@ -319,5 +319,8 @@ void shrinkReceiptPhoto(List<String> paths) {
   File(to).writeAsBytesSync(img.encodeJpg(photo, quality: 88));
   try {
     File(from).deleteSync();
-  } catch (_) {}
+  } catch (e) {
+    // Only the raw capture in the app's temp folder; the OS clears it.
+    debugPrint('[receipt_camera] temp photo not deleted: $e');
+  }
 }

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'line_money.dart' as money;
 
 /// One invoice with its line items, plus the online-payment path.
 ///
@@ -21,8 +22,13 @@ class InvoiceItem {
         discountPct = (r['discount_pct'] as num?)?.toDouble() ?? 0,
         taxRate = (r['tax_rate'] as num?)?.toDouble() ?? 0,
         lineTotal = (r['line_total'] as num?)?.toDouble() ??
-            ((r['quantity'] as num?)?.toDouble() ?? 0) *
-                ((r['unit_price'] as num?)?.toDouble() ?? 0);
+            money.lineTotalCents(
+                  quantity: (r['quantity'] as num?)?.toDouble() ?? 0,
+                  unitPrice: (r['unit_price'] as num?)?.toDouble() ?? 0,
+                  discountPct: (r['discount_pct'] as num?)?.toDouble() ?? 0,
+                  taxRate: (r['tax_rate'] as num?)?.toDouble() ?? 0,
+                ) /
+                100;
 }
 
 /// One payment recorded against an invoice (online or by hand).
@@ -164,8 +170,12 @@ class DraftItem {
     this.taxRate = 0,
   });
 
-  double get lineTotal =>
-      quantity * unitPrice * (1 - discountPct / 100) * (1 + taxRate / 100);
+  /// Rounded like the database (services/line_money.dart): the old
+  /// float formula rounded only the end and could miss the saved total by a
+  /// cent.
+  int get lineTotalCents => money.lineTotalCents(
+      quantity: quantity, unitPrice: unitPrice, discountPct: discountPct, taxRate: taxRate);
+  double get lineTotal => lineTotalCents / 100;
   bool get isUsable => description.trim().isNotEmpty && quantity > 0;
 }
 

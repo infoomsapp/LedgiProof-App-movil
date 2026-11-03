@@ -130,7 +130,7 @@ class _RecurringInvoiceComposeScreenState
   }
 
   double get _total =>
-      _items.where((i) => i.isUsable).fold(0.0, (s, i) => s + i.lineTotal);
+      _items.where((i) => i.isUsable).fold(0, (s, i) => s + i.lineTotalCents) / 100;
 
   bool get _canSave => _client != null && _items.any((i) => i.isUsable);
 

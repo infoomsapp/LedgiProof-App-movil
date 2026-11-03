@@ -179,7 +179,7 @@ class _InvoiceComposeScreenState extends State<InvoiceComposeScreen> {
   }
 
   double get _total =>
-      _items.where((i) => i.isUsable).fold(0.0, (sum, i) => sum + i.lineTotal);
+      _items.where((i) => i.isUsable).fold(0, (sum, i) => sum + i.lineTotalCents) / 100;
 
   // When editing, the client is fixed and already on the invoice, so it is
   // not part of what makes the form valid.

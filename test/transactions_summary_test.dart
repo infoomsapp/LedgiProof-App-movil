@@ -1,20 +1,16 @@
-// The dashboard's three numbers and colour bar are computed on the phone from
-// the rows of the chosen period, so the arithmetic is worth pinning.
+// The dashboard's three numbers and colour bar come from
+// get_transaction_summary; what the phone does with its answer is worth pinning.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ledgiproof/services/transactions_service.dart';
 
 void main() {
   test('counts per colour, money in, money out, needs review', () {
-    final r = TransactionsService.summarize([
-      (semaphore: 'blue', amount: 1250.00),
-      (semaphore: 'blue', amount: 3200.00),
-      (semaphore: 'green', amount: -6.45),
-      (semaphore: 'green', amount: -1800.00),
-      (semaphore: 'amber', amount: -320.00),
-      (semaphore: 'amber', amount: -900.00),
-      (semaphore: 'red', amount: -9500.00),
-    ]);
+    final r = TransactionsService.summaryFromJson({
+      'counts': {'blue': 2, 'green': 2, 'amber': 2, 'red': 1},
+      'money_in': 4450.00,
+      'money_out': 12526.45,
+    });
     expect(r.counts, {'blue': 2, 'green': 2, 'amber': 2, 'red': 1, 'all': 7});
     expect(r.totals.moneyIn, 4450.00);
     expect(r.totals.moneyOut, closeTo(12526.45, 0.001));
@@ -22,16 +18,17 @@ void main() {
   });
 
   test('an unknown colour is not counted as one of the four', () {
-    final r = TransactionsService.summarize([
-      (semaphore: 'purple', amount: -5.0),
-      (semaphore: null, amount: 5.0),
-    ]);
+    final r = TransactionsService.summaryFromJson({
+      'counts': {'purple': 1},
+      'money_in': 5.0,
+      'money_out': 5.0,
+    });
     expect(r.counts['all'], 0);
     expect(r.totals.moneyIn, 5.0); // money still adds up
   });
 
   test('empty period', () {
-    final r = TransactionsService.summarize([]);
+    final r = TransactionsService.summaryFromJson({'counts': {}, 'money_in': 0, 'money_out': 0});
     expect(r.counts['all'], 0);
     expect(r.totals.needsReview, 0);
     expect(r.totals.moneyIn, 0);

@@ -132,45 +132,32 @@ class TransactionsService {
 
   static String _isoDay(DateTime d) => d.toIso8601String().substring(0, 10);
 
-  /// Counts and totals come from one light query over colour + amount, the way
-  /// the web derives them from the rows it holds; capped so a huge ledger
-  /// cannot make this slow.
+  /// Counts and totals are summed by the database, so a row limit can't cut them.
   Future<({Map<String, int> counts, TxTotals totals})> _summary(
       String orgId, DateTime? since) async {
-    var q = _db
-        .from('transactions')
-        .select('semaphore, amount')
-        .eq('org_id', orgId)
-        .eq('is_current', true);
-    if (since != null) q = q.gte('transaction_date', _isoDay(since));
-    final rows = await q.limit(10000);
-    return summarize((rows as List)
-        .map((r) => (
-              semaphore: (r as Map)['semaphore'] as String?,
-              amount: ((r)['amount'] as num?)?.toDouble() ?? 0,
-            ))
-        .toList());
+    final r = await _db.rpc('get_transaction_summary', params: {
+      'p_org_id': orgId,
+      if (since != null) 'p_since': _isoDay(since),
+    });
+    return summaryFromJson(Map<String, dynamic>.from(r as Map));
   }
 
-  /// Pure: per-colour counts plus money in / out / needs-review. Split out so
-  /// it can be tested without a database.
-  static ({Map<String, int> counts, TxTotals totals}) summarize(
-      List<({String? semaphore, double amount})> rows) {
-    final counts = <String, int>{for (final s in semaphores) s: 0};
-    var moneyIn = 0.0, moneyOut = 0.0;
-    for (final r in rows) {
-      final s = r.semaphore;
-      if (s != null && counts.containsKey(s)) counts[s] = counts[s]! + 1;
-      if (r.amount > 0) {
-        moneyIn += r.amount;
-      } else {
-        moneyOut += -r.amount;
-      }
-    }
+  /// Pure: reads get_transaction_summary's answer. Only the four colours count;
+  /// split out so it can be tested without a database.
+  static ({Map<String, int> counts, TxTotals totals}) summaryFromJson(
+      Map<String, dynamic> j) {
+    final raw = (j['counts'] as Map?) ?? const {};
+    final counts = <String, int>{
+      for (final s in semaphores) s: (raw[s] as num?)?.toInt() ?? 0,
+    };
     counts['all'] = counts.values.fold(0, (a, b) => a + b);
     return (
       counts: counts,
-      totals: TxTotals(moneyIn, moneyOut, (counts['amber'] ?? 0) + (counts['red'] ?? 0)),
+      totals: TxTotals(
+        (j['money_in'] as num?)?.toDouble() ?? 0,
+        (j['money_out'] as num?)?.toDouble() ?? 0,
+        (counts['amber'] ?? 0) + (counts['red'] ?? 0),
+      ),
     );
   }
 

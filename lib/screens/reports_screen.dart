@@ -1,3 +1,5 @@
+import '../utils/money.dart';
+
 import 'package:flutter/material.dart';
 import '../services/report_service.dart';
 import '../services/workspace_service.dart';
@@ -758,7 +760,7 @@ class _CfView extends StatelessWidget {
             rows: [
               for (final l in data.lines) (l.code, '${l.name}  ·  ${l.bucket}', l.amount)
             ],
-            total: data.lines.fold(0.0, (sum, l) => sum + l.amount),
+            total: sumMoney(data.lines.map((l) => l.amount)),
             accent: AppColors.amber,
             currency: currency,
           ),

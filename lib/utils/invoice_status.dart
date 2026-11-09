@@ -6,6 +6,8 @@
 /// free of Flutter so the rules can be tested on their own.
 library;
 
+import 'money.dart';
+
 enum InvoiceBucket { draft, awaiting, overdue, paid, voided }
 
 class InvoiceStanding {
@@ -102,16 +104,16 @@ class InvoiceTotals {
 /// not count as money owed to you.
 InvoiceTotals summarizeInvoices(
     Iterable<({InvoiceStanding standing, double balanceDue})> rows) {
-  var outstanding = 0.0;
-  var overdue = 0.0;
+  var outstanding = 0; // cents
+  var overdue = 0;
   var overdueCount = 0;
   for (final r in rows) {
     switch (r.standing.bucket) {
       case InvoiceBucket.awaiting:
-        outstanding += r.balanceDue;
+        outstanding += toCents(r.balanceDue);
       case InvoiceBucket.overdue:
-        outstanding += r.balanceDue;
-        overdue += r.balanceDue;
+        outstanding += toCents(r.balanceDue);
+        overdue += toCents(r.balanceDue);
         overdueCount++;
       case InvoiceBucket.draft:
       case InvoiceBucket.paid:
@@ -119,7 +121,7 @@ InvoiceTotals summarizeInvoices(
         break;
     }
   }
-  return InvoiceTotals(outstanding, overdue, overdueCount);
+  return InvoiceTotals(fromCents(outstanding), fromCents(overdue), overdueCount);
 }
 
 /// Payment terms offered when composing: due on receipt, Net 7/15/30/60.

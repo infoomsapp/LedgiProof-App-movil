@@ -1,3 +1,5 @@
+import '../utils/money.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Mirrors src/lib/tax-tables-2026.ts businessMileageRateForDate exactly --
@@ -27,7 +29,7 @@ class MileageService {
     String? clientId,
   }) async {
     final rate = businessMileageRateForDate(date);
-    final deduction = (miles * rate * 100).round() / 100;
+    final deduction = fromCents(mileageDeductionCents(miles, rate));
 
     await _db.from('mileage_entries').insert({
       'org_id': orgId,

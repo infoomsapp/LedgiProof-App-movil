@@ -3,6 +3,8 @@
 /// derives it from the due date the moment a bill is late.
 library;
 
+import 'money.dart';
+
 enum BillUrgency { overdue, dueSoon, upcoming, paid }
 
 /// A bill due within this many days shows as "due soon" (matches the web's
@@ -52,20 +54,20 @@ BillTotals summarizeBills(
   Iterable<({String status, DateTime dueDate, double amount})> rows, {
   DateTime? now,
 }) {
-  var toPay = 0.0, overdue = 0.0, dueSoon = 0.0;
+  var toPay = 0, overdue = 0, dueSoon = 0; // cents
   for (final r in rows) {
     switch (billUrgency(status: r.status, dueDate: r.dueDate, now: now)) {
       case BillUrgency.paid:
         break;
       case BillUrgency.overdue:
-        toPay += r.amount;
-        overdue += r.amount;
+        toPay += toCents(r.amount);
+        overdue += toCents(r.amount);
       case BillUrgency.dueSoon:
-        toPay += r.amount;
-        dueSoon += r.amount;
+        toPay += toCents(r.amount);
+        dueSoon += toCents(r.amount);
       case BillUrgency.upcoming:
-        toPay += r.amount;
+        toPay += toCents(r.amount);
     }
   }
-  return BillTotals(toPay, overdue, dueSoon);
+  return BillTotals(fromCents(toPay), fromCents(overdue), fromCents(dueSoon));
 }

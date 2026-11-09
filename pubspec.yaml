@@ -50,6 +50,7 @@ dependencies:
   camera: 0.12.1
   path_provider: ^2.1.6
   cunning_document_scanner: ^3.0.4
+  flutter_secure_storage: 9.2.4
 
 dev_dependencies:
   flutter_test:

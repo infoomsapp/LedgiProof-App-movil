@@ -1,3 +1,5 @@
+import 'services/secure_session_storage.dart';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
@@ -14,7 +16,15 @@ final themeController = LpThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.publishableKey);
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    publishableKey: SupabaseConfig.publishableKey,
+    authOptions: FlutterAuthClientOptions(
+      localStorage: SecureSessionStorage(
+        legacyKey: 'sb-${Uri.parse(SupabaseConfig.url).host.split('.').first}-auth-token',
+      ),
+    ),
+  );
   // Read the saved light/dark choice before the first frame so the app never
   // flashes the wrong palette on launch.
   await themeController.load();

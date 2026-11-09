@@ -280,7 +280,7 @@ class _RecordPaymentSheetState extends State<_RecordPaymentSheet> {
       setState(() => _error = 'Enter an amount greater than zero.');
       return;
     }
-    if (amount > widget.balance + 0.005) {
+    if (toCents(amount) > toCents(widget.balance)) {
       setState(() => _error = 'That is more than the balance due.');
       return;
     }

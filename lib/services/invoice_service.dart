@@ -1,3 +1,5 @@
+import '../utils/money.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'line_money.dart' as money;
@@ -438,7 +440,7 @@ class InvoiceService {
     final userId = _db.auth.currentUser?.id;
     if (userId == null) throw StateError('No session');
     if (amount <= 0) throw StateError('Enter an amount greater than zero.');
-    if (amount > balanceDue + 0.005) {
+    if (toCents(amount) > toCents(balanceDue)) {
       throw StateError('That is more than the balance due.');
     }
     if (!paymentMethods.containsKey(method)) {

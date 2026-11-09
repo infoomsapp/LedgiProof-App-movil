@@ -1,3 +1,5 @@
+import '../utils/money.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/report_period.dart';
 
@@ -30,9 +32,9 @@ class ProfitAndLoss {
 
   ProfitAndLoss({required this.income, required this.expenses});
 
-  double get totalIncome => income.fold(0.0, (s, r) => s + r.amount);
-  double get totalExpenses => expenses.fold(0.0, (s, r) => s + r.amount);
-  double get netProfit => totalIncome - totalExpenses;
+  double get totalIncome => sumMoney(income.map((r) => r.amount));
+  double get totalExpenses => sumMoney(expenses.map((r) => r.amount));
+  double get netProfit => fromCents(toCents(totalIncome) - toCents(totalExpenses));
   bool get isEmpty => income.isEmpty && expenses.isEmpty;
 }
 

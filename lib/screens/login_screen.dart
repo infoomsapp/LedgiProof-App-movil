@@ -7,7 +7,7 @@ import '../widgets/lp_logo.dart';
 import 'accept_invite_screen.dart';
 
 /// "email" or "LedgiProof ID" (LP-7018786, or just the digits) -- the way
-/// Intuit's sign-in takes "email or user ID".
+/// sign-in forms take "email or user ID".
 bool isEmailLogin(String value) => value.contains('@');
 
 class LoginScreen extends StatefulWidget {

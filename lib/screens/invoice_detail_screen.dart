@@ -150,7 +150,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
 
   /// Opens the system share sheet (WhatsApp, SMS, Messages, email...) with the
-  /// pay link: how Xero shares an invoice from its phone app.
+  /// pay link.
   Future<void> _shareLink(InvoiceDetail inv) async {
     final token = inv.publicToken;
     if (token == null) {
@@ -384,7 +384,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                // Sent / viewed: what QuickBooks shows when you tap an invoice.
+                // Sent / viewed, shown when you tap an invoice.
                 // Staff only; a client does not need to see when they opened it.
                 if (_canSend && (inv.sentAt != null || inv.viewedAt != null)) ...[
                   _SectionLabel('Activity'),

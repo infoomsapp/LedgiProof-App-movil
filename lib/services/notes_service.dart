@@ -4,7 +4,7 @@ import '../utils/note_status.dart';
 /// Firm notes on the phone -- the internal accounting notes a firm keeps per
 /// client. Same table and RPCs as the web's Notes page
 /// (src/services/workspace-notes.service.ts), so anything done here is what
-/// the desk sees. Model follows TaxDome's firm app: Active list, archive, and
+/// the desk sees. Model: Active list, archive, and
 /// an Archived list where a note is restored or deleted for good. The database
 /// enforces the rules (LK001-LK005); this file only asks.
 class WorkspaceNote {

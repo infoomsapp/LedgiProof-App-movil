@@ -6,10 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Every bill posts itself to the ledger on the server (bills_ledger.sql):
 /// Dr expense / Cr Accounts Payable. "Mark paid" records a payment made
 /// outside the app (Dr AP / Cr Bill Payments in Transit); the bank withdrawal
-/// is then matched in Review. It does not move money. QuickBooks and Xero
+/// is then matched in Review. It does not move money. Other products
 /// draw the same line -- "Mark as paid" only records a payment made elsewhere,
 /// and actually sending an ACH or a check is a separate, paid payments product
-/// (QuickBooks Bill Pay, Xero + BILL) that needs a connected payment processor.
+/// that needs a connected payment processor.
 /// LedgiProof has none wired yet, so the phone says "record it here after you
 /// pay" rather than pretend to send money.
 class Vendor {

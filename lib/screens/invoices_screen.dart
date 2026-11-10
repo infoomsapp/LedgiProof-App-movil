@@ -25,7 +25,7 @@ extension on _Filter {
 /// Every invoice of a workspace on one screen, with the two numbers an
 /// accountant looks at first (owed, overdue), filters, search and each
 /// invoice's standing ("Overdue · 12 days", "Due in 5 days") right under its
-/// client -- the QuickBooks / Xero mobile pattern. For a portal client the
+/// client -- the usual mobile pattern. For a portal client the
 /// same screen lists only their own invoices: the database narrows it.
 class InvoicesScreen extends StatelessWidget {
   final Workspace workspace;

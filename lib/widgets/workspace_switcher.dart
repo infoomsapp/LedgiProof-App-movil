@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 
 /// Firm / Personal switching, ported from the web app's OrgSelector.
 ///
-/// The shape of this follows what QuickBooks Online Accountant and Xero both
+/// The shape of this follows what the market
 /// settled on: an accountant's own books are a separate workspace from the
 /// firm's and from each client's, and the way in is a single control in the
 /// header rather than a setting buried in a menu. The switch only exists for

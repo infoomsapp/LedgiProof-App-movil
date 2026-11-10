@@ -2,7 +2,7 @@
 ///
 /// The stored status only flips to 'overdue' when something writes it, so the
 /// phone works it out from the due date the moment an invoice is late -- the
-/// same way QuickBooks shows "N days overdue" under the customer's name. Kept
+/// same way other products show "N days overdue" under the customer's name. Kept
 /// free of Flutter so the rules can be tested on their own.
 library;
 

@@ -376,7 +376,7 @@ class WorkspaceService {
 }
 
 /// Thrown by [WorkspaceService.loadScope] when a portal client has no active
-/// access left -- the firm deactivated their client account (TaxDome shows
+/// access left -- the firm deactivated their client account (other portals show
 /// "Your account was deactivated" in the same situation).
 class PortalAccessEnded implements Exception {
   final String? firmName;

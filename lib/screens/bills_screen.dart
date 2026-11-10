@@ -16,7 +16,7 @@ String _date(DateTime d) => d.toIso8601String().substring(0, 10);
 ///
 /// It does not send money: paying the vendor still happens at the bank (ACH,
 /// check, wire), and this records that it happened -- the same "Mark as paid"
-/// QuickBooks and Xero offer. The banner says so up front.
+/// other products offer. The banner says so up front.
 class BillsScreen extends StatefulWidget {
   final Workspace workspace;
   const BillsScreen({super.key, required this.workspace});
@@ -134,7 +134,7 @@ class _BillsScreenState extends State<BillsScreen> {
               const SizedBox(height: 6),
               Text(
                 'Track what you owe vendors and when it is due on the '
-                'Bookkeeper and Accountant plans.',
+                'Meridian Plus and Accountant plans.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: AppColors.inkMuted),
               ),

@@ -9,7 +9,7 @@ import '../widgets/client_picker_sheet.dart';
 
 /// Firm notes across every client -- the phone twin of the web's Notes page.
 /// Filters, approve, mark done, archive; the Archived filter is where a note
-/// is restored or deleted for good (TaxDome's firm app works the same way).
+/// is restored or deleted for good.
 class NotesScreen extends StatefulWidget {
   final Workspace workspace;
   const NotesScreen({super.key, required this.workspace});
